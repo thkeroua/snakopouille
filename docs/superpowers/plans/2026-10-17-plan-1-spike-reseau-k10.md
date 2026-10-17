@@ -249,7 +249,7 @@ test('buildScene deterministic', () => {
   1. K10-A : Héberger. K10-B : Chercher → la partie de A apparaît ? → Rejoindre → attendre 60 s → Copier les résultats.
   2. Recommencer avec B qui rejoint **par code**.
   3. Lancer un second hôte sur une 3ᵉ tablette/le téléphone → il doit prendre le slot 2 et être visible.
-  4. Sur K10 : page rendu, lancer `glow` avec mega 600, 3000, 8000 (DPR 1,5), puis `glow` 8000 en DPR 1, puis `shadow` 3000. Copier les résultats.
+  4. Sur K10 : page rendu, lancer `glow` avec mega 600, 3000, 8000 (DPR 1,5), puis `glow` 8000 en DPR 1, puis `glow-half` 3000 et 8000 (halo en demi-résolution, solution de repli), puis `shadow` 3000. Copier les résultats.
 - [ ] **Step 2:** Remplir le rapport avec les résultats bruts collés + la grille de verdict :
 
 | Critère | Seuil « OK » |
