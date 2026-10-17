@@ -96,7 +96,7 @@ function frame(t: number) {
     if (events.some((e) => e.type === 'end')) {
       ended = true;
       hud.update(match, OWN_ID, true);
-      showEndScreen(endRoot, match.ranking(), newMatch);
+      showEndScreen(endRoot, match.ranking(), { title: 'Fin de partie', buttons: [{ label: 'Rejouer', onClick: newMatch }] });
     }
   }
   if (ended) acc = 0;

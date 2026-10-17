@@ -1,6 +1,7 @@
-import type { Match } from '../game/match';
 import { leaderId } from '../game/hostRules';
+import type { RankingRow } from '../game/ranking';
 import type { SnakeId } from '../game/types';
+import type { GameView } from '../game/view';
 
 const UPDATE_MS = 200; // ≤ 5 mises à jour DOM par seconde
 const TOP = 5;
@@ -35,25 +36,24 @@ export class Hud {
     this.center = el('div', 'hud-center', root);
   }
 
-  update(match: Match, ownId: SnakeId, force = false): void {
+  update(view: GameView, ownId: SnakeId, force = false): void {
     const now = performance.now();
     if (!force && now - this.last < UPDATE_MS) return;
     this.last = now;
-    const h = match.host;
-    this.clock.textContent = formatClock(match.cfg.match.durationS - h.time);
-    this.clock.classList.toggle('fever', h.fever);
-    this.fever.style.display = h.fever ? '' : 'none';
+    this.clock.textContent = formatClock(view.cfg.match.durationS - view.time);
+    this.clock.classList.toggle('fever', view.fever);
+    this.fever.style.display = view.fever ? '' : 'none';
 
-    const rows = match.ranking();
-    const leader = leaderId(match.snakes);
+    const rows = view.ranking();
+    const leader = leaderId(view.snakes);
     const byPoints = [...rows].sort((a, b) => b.points - a.points);
     this.fill(this.points, 'POINTS', byPoints, ownId, (r) => r.points, leader);
     this.fill(this.score, 'SCORE', rows, ownId, (r) => r.score, null);
 
-    const own = match.snakes.find((s) => s.id === ownId);
-    if (own && !own.alive && !h.ended) {
+    const own = view.snakes.find((s) => s.id === ownId);
+    if (own && !own.alive && !view.ended && Number.isFinite(own.respawnAt)) {
       this.center.style.display = '';
-      this.center.textContent = `Réapparition dans ${Math.max(1, Math.ceil(own.respawnAt - h.time))} s`;
+      this.center.textContent = `Réapparition dans ${Math.max(1, Math.ceil(own.respawnAt - view.time))} s`;
     } else {
       this.center.style.display = 'none';
     }
@@ -62,9 +62,9 @@ export class Hud {
   private fill(
     panel: HTMLElement,
     title: string,
-    rows: ReturnType<Match['ranking']>,
+    rows: RankingRow[],
     ownId: SnakeId,
-    value: (r: ReturnType<Match['ranking']>[number]) => number,
+    value: (r: RankingRow) => number,
     leader: SnakeId | null,
   ) {
     panel.replaceChildren();

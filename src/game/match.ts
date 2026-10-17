@@ -1,25 +1,22 @@
 // Orchestration locale : en solo, la même machine joue le client (snakeMotion) et l'hôte (hostRules).
 import type { GameplayConfig } from '../config/gameplay';
+import type { Food } from './food';
 import { HostRules, createHost, type HostState } from './hostRules';
+import { buildRanking, type RankingRow } from './ranking';
 import { Rng } from './rng';
 import { createSnake, stepMotion, type SnakeState } from './snakeMotion';
 import { findSpawnPoint } from './spawn';
 import type { MatchEvent, Player, SnakeId, SnakeInput } from './types';
+import type { GameView } from './view';
+
+export type { RankingRow } from './ranking';
 
 export const SIM_DT = 1 / 60;
 const NO_INPUT: SnakeInput = { target: null, boost: false };
 
-export type RankingRow = {
-  id: SnakeId;
-  name: string;
-  color: string;
-  score: number;
-  points: number;
-  deaths: number;
-  maxPoints: number;
-};
+const NO_HIDDEN: ReadonlySet<number> = new Set();
 
-export class Match {
+export class Match implements GameView {
   readonly snakes: SnakeState[] = [];
   readonly host: HostState;
   private readonly rules: HostRules;
@@ -57,21 +54,24 @@ export class Match {
     return events;
   }
 
+  get food(): ReadonlyMap<number, Food> {
+    return this.host.food.items;
+  }
+  get hiddenFood(): ReadonlySet<number> {
+    return NO_HIDDEN;
+  }
+  get time(): number {
+    return this.host.time;
+  }
+  get fever(): boolean {
+    return this.host.fever;
+  }
+  get ended(): boolean {
+    return this.host.ended;
+  }
+
   /** Score décroissant, puis points décroissants. */
   ranking(): RankingRow[] {
-    return this.snakes
-      .map((s) => {
-        const st = this.host.stats.get(s.id)!;
-        return {
-          id: s.id,
-          name: s.name,
-          color: s.color,
-          score: st.score,
-          points: Math.floor(s.alive ? s.points : 0),
-          deaths: st.deaths,
-          maxPoints: Math.floor(st.maxPoints),
-        };
-      })
-      .sort((a, b) => b.score - a.score || b.points - a.points);
+    return buildRanking(this.snakes, this.host.stats);
   }
 }

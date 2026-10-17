@@ -4,6 +4,7 @@ import {
   buildBodyGrid,
   headClashes,
   headHitsBody,
+  neckExtra,
   resolveClash,
   type BodyRef,
 } from '../../src/game/collision';
@@ -123,4 +124,25 @@ test('buildBodyGrid reuses pooled BodyRefs across ticks (no per-tick allocation)
   buildBodyGrid([b], g, GAMEPLAY, pool);
   expect(pool.length).toBe(size);
   expect(pool[0]).toBe(first);
+});
+
+test('neckExtra = 2 × boosted speed / sendHz', () => expect(neckExtra(GAMEPLAY)).toBe(24));
+
+test('client-side check ignores the other snake neck', () => {
+  const b = snake('B', [{ x: 100, y: 500 }, { x: 400, y: 500 }], 0, 1000);
+  const near = snake('A', [{ x: 390, y: 560 }, { x: 390, y: 501 }], -Math.PI / 2); // 10 u derrière la tête de B
+  const far = snake('C', [{ x: 250, y: 560 }, { x: 250, y: 501 }], -Math.PI / 2);
+  const g = grid([b, near, far]);
+  expect(headHitsBody(near, g, 20, GAMEPLAY, neckExtra(GAMEPLAY))).toBeNull();
+  expect(headHitsBody(near, g, 20, GAMEPLAY)).toBe('B');
+  expect(headHitsBody(far, g, 20, GAMEPLAY, neckExtra(GAMEPLAY))).toBe('B');
+});
+
+test('body refs carry their arc length from the head', () => {
+  const b = snake('B', [{ x: 100, y: 500 }, { x: 400, y: 500 }], 0, 1000);
+  const g = new SpatialGrid<BodyRef>(1600, 1000, 64);
+  const pool: BodyRef[] = [];
+  buildBodyGrid([b], g, GAMEPLAY, pool);
+  const ref = pool.find((r) => Math.abs(r.x - 300) < 0.5)!;
+  expect(ref.arc).toBeCloseTo(100, 0);
 });

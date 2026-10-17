@@ -91,3 +91,43 @@ test('dropTrail on tiny body gives one orb', () => {
   expect(orbs).toHaveLength(1);
   expect(orbs[0].value).toBe(10);
 });
+
+test('food color derives from id', () => {
+  const a = new FoodStore(GAMEPLAY, new Rng(1), PALETTE);
+  const b = new FoodStore(GAMEPLAY, new Rng(99), PALETTE);
+  for (let i = 0; i < 6; i++) {
+    const fa = a.add(10, 10, 5, false);
+    const fb = b.add(10, 10, 5, false);
+    expect(fa.color).toBe(fb.color);
+    expect(fa.color).toBe(PALETTE[fa.id % PALETTE.length]);
+  }
+});
+
+test('insert keeps the given id and advances nextId', () => {
+  const f = store();
+  const g = f.insert(42, 100, 200, 10);
+  expect(g).toMatchObject({ id: 42, x: 100, y: 200, value: 10 });
+  expect(f.items.get(42)).toBe(g);
+  expect(f.touching(100, 200, 1)).toEqual([42]);
+  expect(f.add(0, 0, 5, false).id).toBe(43);
+});
+
+test('drainChanges reports adds and dels, and cancels add+del in the same window', () => {
+  const f = store();
+  const c = f.add(1, 1, 5, false);
+  f.trackChanges = true;
+  const a = f.add(2, 2, 5, false);
+  const b = f.add(3, 3, 10, true);
+  f.remove(a.id);
+  f.remove(c.id);
+  const ch = f.drainChanges();
+  expect(ch.add.map((x) => x.id)).toEqual([b.id]);
+  expect(ch.del).toEqual([c.id]);
+  expect(f.drainChanges()).toEqual({ add: [], del: [] });
+});
+
+test('changes are not recorded when tracking is off', () => {
+  const f = store();
+  f.add(1, 1, 5, false);
+  expect(f.drainChanges()).toEqual({ add: [], del: [] });
+});

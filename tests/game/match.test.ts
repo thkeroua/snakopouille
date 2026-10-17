@@ -193,3 +193,14 @@ test('boosted head-on where heads cross in one tick is still head-on', () => {
   for (const e of deaths) expect(e).toMatchObject({ killer: null, cause: 'head-on' });
   expect(m.host.stats.get(a.id)!.score + m.host.stats.get(b.id)!.score).toBe(0);
 });
+
+test('Match exposes GameView fields', () => {
+  const m = new Match(players(2), GAMEPLAY, 1, PALETTE);
+  m.tick(SIM_DT, NO_INPUT);
+  expect(m.time).toBeCloseTo(SIM_DT, 9);
+  expect(m.fever).toBe(false);
+  expect(m.ended).toBe(false);
+  expect(m.food).toBe(m.host.food.items);
+  expect(m.hiddenFood.size).toBe(0);
+  expect(m.ranking()).toHaveLength(2);
+});

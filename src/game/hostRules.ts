@@ -103,20 +103,33 @@ export class HostRules {
 
   /**
    * Morts du pas. Les têtes à tête passent en premier : un face-à-face ne doit pas être
-   * requalifié en « tête contre corps » à cause du cou de l'adversaire.
+   * requalifié en « tête contre corps » à cause du cou de l'adversaire. Viennent ensuite les
+   * morts tête contre corps signalées par les clients (réseau), puis, en solo seulement,
+   * la détection locale tête contre corps.
    */
-  deaths(snakes: readonly SnakeState[], events: MatchEvent[]): void {
+  deaths(
+    snakes: readonly SnakeState[],
+    events: MatchEvent[],
+    reported: readonly { victim: SnakeId; killer: SnakeId }[] = [],
+    detectBody = true,
+  ): void {
+    const byId = new Map(snakes.map((s) => [s.id, s]));
     const found = new Map<SnakeId, Death>();
     for (const c of headClashes(snakes, this.cfg)) {
       for (const d of resolveClash(c)) if (!found.has(d.victim)) found.set(d.victim, d);
     }
-    const maxHalf = buildBodyGrid(snakes, this.bodyGrid, this.cfg, this.bodyPool);
-    for (const s of snakes) {
-      if (!s.alive || found.has(s.id)) continue;
-      const owner = headHitsBody(s, this.bodyGrid, maxHalf, this.cfg);
-      if (owner !== null) found.set(s.id, { victim: s.id, killer: owner, cause: 'body' });
+    for (const r of reported) {
+      if (!byId.get(r.victim)?.alive || found.has(r.victim)) continue;
+      found.set(r.victim, { victim: r.victim, killer: r.killer, cause: 'body' });
     }
-    const byId = new Map(snakes.map((s) => [s.id, s]));
+    if (detectBody) {
+      const maxHalf = buildBodyGrid(snakes, this.bodyGrid, this.cfg, this.bodyPool);
+      for (const s of snakes) {
+        if (!s.alive || found.has(s.id)) continue;
+        const owner = headHitsBody(s, this.bodyGrid, maxHalf, this.cfg);
+        if (owner !== null) found.set(s.id, { victim: s.id, killer: owner, cause: 'body' });
+      }
+    }
     for (const d of found.values()) {
       const s = byId.get(d.victim)!;
       const st = this.state.stats.get(s.id)!;
@@ -126,7 +139,10 @@ export class HostRules {
       s.boosting = false;
       s.respawnAt = this.state.time + this.cfg.match.respawnDelayS;
       st.deaths++;
-      if (d.killer !== null) this.state.stats.get(d.killer)!.score++;
+      if (d.killer !== null) {
+        const ks = this.state.stats.get(d.killer);
+        if (ks) ks.score++;
+      }
       events.push({ type: 'death', victim: d.victim, killer: d.killer, cause: d.cause });
     }
   }
@@ -142,6 +158,19 @@ export class HostRules {
         s.points += f.value;
         events.push({ type: 'eat', snake: s.id, foodId: id, value: f.value });
       }
+    }
+  }
+
+  /** Demande de nourriture d'un client (réseau) : seuls les ids encore au sol sont crédités. */
+  eatRequest(s: SnakeState, ids: readonly number[], events: MatchEvent[]): void {
+    if (!s.alive) return;
+    const food = this.state.food;
+    for (const id of ids) {
+      const f = food.items.get(id);
+      if (!f) continue;
+      food.remove(id);
+      s.points += f.value;
+      events.push({ type: 'eat', snake: s.id, foodId: id, value: f.value });
     }
   }
 

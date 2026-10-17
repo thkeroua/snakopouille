@@ -1,13 +1,19 @@
-import type { RankingRow } from '../game/match';
+import type { RankingRow } from '../game/ranking';
 import { isPortrait } from '../view/viewport';
 
-export function showEndScreen(root: HTMLElement, ranking: RankingRow[], onReplay: () => void): void {
+export type EndScreenOptions = {
+  title: string;
+  buttons: { label: string; onClick: () => void }[];
+  note?: string;
+};
+
+export function showEndScreen(root: HTMLElement, ranking: RankingRow[], opts: EndScreenOptions): void {
   root.replaceChildren();
   root.style.display = '';
   const box = document.createElement('div');
   box.className = 'end-box';
   const h = document.createElement('h1');
-  h.textContent = 'Fin de partie';
+  h.textContent = opts.title;
   box.appendChild(h);
 
   const table = document.createElement('table');
@@ -28,13 +34,24 @@ export function showEndScreen(root: HTMLElement, ranking: RankingRow[], onReplay
   });
   box.appendChild(table);
 
-  const btn = document.createElement('button');
-  btn.textContent = 'Rejouer';
-  btn.addEventListener('click', () => {
-    root.style.display = 'none';
-    onReplay();
-  });
-  box.appendChild(btn);
+  if (opts.note) {
+    const p = document.createElement('p');
+    p.className = 'end-note';
+    p.textContent = opts.note;
+    box.appendChild(p);
+  }
+  const row = document.createElement('div');
+  row.className = 'end-buttons';
+  for (const b of opts.buttons) {
+    const btn = document.createElement('button');
+    btn.textContent = b.label;
+    btn.addEventListener('click', () => {
+      root.style.display = 'none';
+      b.onClick();
+    });
+    row.appendChild(btn);
+  }
+  box.appendChild(row);
   root.appendChild(box);
 }
 

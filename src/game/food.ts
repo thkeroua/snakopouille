@@ -14,6 +14,10 @@ export class FoodStore {
   private nextId = 1;
   private natural = 0;
   private maxR = 0;
+  /** Journal des ajouts/retraits pour la synchro réseau (hôte). */
+  trackChanges = false;
+  private added = new Map<number, Food>();
+  private removed: number[] = [];
 
   constructor(
     private readonly cfg: GameplayConfig,
@@ -32,14 +36,13 @@ export class FoodStore {
   }
 
   add(x: number, y: number, value: number, natural: boolean): Food {
-    const r = foodRadius(value, this.cfg);
-    const color = this.palette[this.rng.int(this.palette.length)];
-    const f: Food = { id: this.nextId++, x, y, value, r, color, natural };
-    this.map.set(f.id, f);
-    this.grid.insert(x, y, f);
-    if (natural) this.natural++;
-    if (r > this.maxR) this.maxR = r;
-    return f;
+    return this.put(this.nextId++, x, y, value, natural);
+  }
+
+  /** Miroir client : nourriture reçue de l'hôte, avec son id. */
+  insert(id: number, x: number, y: number, value: number): Food {
+    this.nextId = Math.max(this.nextId, id + 1);
+    return this.put(id, x, y, value, false);
   }
 
   remove(id: number): void {
@@ -48,6 +51,28 @@ export class FoodStore {
     this.map.delete(id);
     this.grid.remove(f.x, f.y, f);
     if (f.natural) this.natural--;
+    if (this.trackChanges && !this.added.delete(id)) this.removed.push(id);
+  }
+
+  /** Changements depuis le dernier appel (un ajout retiré entre-temps n'apparaît nulle part). */
+  drainChanges(): { add: Food[]; del: number[] } {
+    const out = { add: [...this.added.values()], del: this.removed };
+    this.added = new Map();
+    this.removed = [];
+    return out;
+  }
+
+  private put(id: number, x: number, y: number, value: number, natural: boolean): Food {
+    const r = foodRadius(value, this.cfg);
+    // Couleur déduite de l'id : identique sur tous les appareils sans la transmettre.
+    const color = this.palette[id % this.palette.length];
+    const f: Food = { id, x, y, value, r, color, natural };
+    this.map.set(f.id, f);
+    this.grid.insert(x, y, f);
+    if (natural) this.natural++;
+    if (r > this.maxR) this.maxR = r;
+    if (this.trackChanges) this.added.set(id, f);
+    return f;
   }
 
   spawnNatural(multiplier: number): Food | null {

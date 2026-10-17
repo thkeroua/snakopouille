@@ -5,7 +5,8 @@ import { headRadius, type SnakeState } from './snakeMotion';
 import type { SpatialGrid } from './spatialGrid';
 import type { DeathCause, SnakeId } from './types';
 
-export type BodyRef = { snake: SnakeId; i: number; halfWidth: number; x: number; y: number };
+/** `arc` = abscisse curviligne depuis la tête de son serpent. */
+export type BodyRef = { snake: SnakeId; i: number; halfWidth: number; x: number; y: number; arc: number };
 
 /**
  * Tous les échantillons des serpents vivants, SAUF leur zone de tête (abscisse depuis
@@ -32,25 +33,38 @@ export function buildBodyGrid(
       arc += Math.hypot(p.x(i) - p.x(i - 1), p.y(i) - p.y(i - 1));
       if (arc < halfWidth) continue;
       let ref = pool[used];
-      if (!ref) ref = pool[used] = { snake: s.id, i, halfWidth, x: 0, y: 0 };
+      if (!ref) ref = pool[used] = { snake: s.id, i, halfWidth, x: 0, y: 0, arc: 0 };
       used++;
       ref.snake = s.id;
       ref.i = i;
       ref.halfWidth = halfWidth;
       ref.x = p.x(i);
       ref.y = p.y(i);
+      ref.arc = arc;
       grid.insert(ref.x, ref.y, ref);
     }
   }
   return maxHalf;
 }
 
-/** Tête de `s` contre le corps des AUTRES serpents : id du propriétaire touché, ou null. */
+/**
+ * Marge du « cou » côté client : ce qu'une tête peut parcourir en deux envois réseau en boost.
+ * Le cou d'un autre serpent relève des têtes à tête, arbitrées par l'hôte (decisions.md).
+ */
+export function neckExtra(cfg: GameplayConfig): number {
+  return (2 * cfg.snake.speed * cfg.snake.boostMultiplier) / cfg.net.sendHz;
+}
+
+/**
+ * Tête de `s` contre le corps des AUTRES serpents : id du propriétaire touché, ou null.
+ * Avec `neckExtra`, le cou de l'autre (arc < sa demi-épaisseur + rayon de `s` + neckExtra) est ignoré.
+ */
 export function headHitsBody(
   s: SnakeState,
   grid: SpatialGrid<BodyRef>,
   maxHalfWidth: number,
   cfg: GameplayConfig,
+  neckExtra?: number,
 ): SnakeId | null {
   const hx = s.path.x(0);
   const hy = s.path.y(0);
@@ -58,6 +72,7 @@ export function headHitsBody(
   let hit: SnakeId | null = null;
   grid.query(hx, hy, r + maxHalfWidth, (b) => {
     if (hit !== null || b.snake === s.id) return;
+    if (neckExtra !== undefined && b.arc < b.halfWidth + r + neckExtra) return;
     const d = r + b.halfWidth;
     const dx = b.x - hx;
     const dy = b.y - hy;

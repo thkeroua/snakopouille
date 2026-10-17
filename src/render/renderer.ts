@@ -1,10 +1,10 @@
 import type { GameplayConfig } from '../config/gameplay';
 import { RENDER } from '../config/render';
 import { leaderId } from '../game/hostRules';
-import type { Match } from '../game/match';
 import { widthFor } from '../game/sizing';
 import type { SnakeState } from '../game/snakeMotion';
 import type { SnakeId } from '../game/types';
+import type { GameView } from '../game/view';
 import { fitViewport, type Viewport } from '../view/viewport';
 import { foodSprite, renderBackground } from './sprites';
 
@@ -38,7 +38,7 @@ export class Renderer {
     return this.view;
   }
 
-  draw(match: Match, ownId: SnakeId): void {
+  draw(view: GameView, ownId: SnakeId): void {
     const ctx = this.ctx;
     const { scale, offsetX, offsetY } = this.view;
     const k = scale * this.dpr;
@@ -46,19 +46,21 @@ export class Renderer {
     if (this.bg) ctx.drawImage(this.bg, 0, 0);
     ctx.setTransform(k, 0, 0, k, offsetX * this.dpr, offsetY * this.dpr);
 
-    for (const f of match.host.food.items.values()) {
+    const hidden = view.hiddenFood;
+    for (const f of view.food.values()) {
+      if (hidden.size > 0 && hidden.has(f.id)) continue;
       const sprite = foodSprite(f.color, f.r * k);
       const half = sprite.width / 2 / k;
       ctx.drawImage(sprite, f.x - half, f.y - half, half * 2, half * 2);
     }
 
-    const order = match.snakes
+    const order = view.snakes
       .filter((s) => s.alive && s.id !== ownId)
       .sort((a, b) => b.points - a.points);
-    const own = match.snakes.find((s) => s.id === ownId && s.alive);
+    const own = view.snakes.find((s) => s.id === ownId && s.alive);
     if (own) order.push(own);
 
-    const cfg = match.cfg;
+    const cfg = view.cfg;
     if (RENDER.glowMode === 'half') this.drawHalfHalo(order, k, cfg);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -78,8 +80,8 @@ export class Renderer {
     }
 
     if (own) this.drawOwnMarker(own, widthFor(own.points, cfg) / 2);
-    const leader = leaderId(match.snakes);
-    const crowned = leader && match.snakes.find((s) => s.id === leader);
+    const leader = leaderId(view.snakes);
+    const crowned = leader && view.snakes.find((s) => s.id === leader);
     if (crowned) this.drawCrown(crowned, widthFor(crowned.points, cfg) / 2);
   }
 
