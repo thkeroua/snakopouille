@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { fetchPublicIp, peerIdForSlot, roomIdFromIp } from '../../src/spike/net/roomId';
+import { fetchPublicIp, peerIdForSlot, roomIdFromIp } from '../../src/net/roomId';
 
 test('roomIdFromIp is stable, 8 lowercase hex', async () => {
   const a = await roomIdFromIp('81.2.3.4');

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { generateCode, normalizeCode, peerIdForCode } from '../../src/spike/net/code';
+import { generateCode, normalizeCode, peerIdForCode } from '../../src/net/code';
 
 test('generateCode uses alphabet, length 4', () => {
   for (let i = 0; i < 200; i++) expect(generateCode()).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$/);

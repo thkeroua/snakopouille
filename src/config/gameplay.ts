@@ -36,6 +36,14 @@ export interface GameplayConfig {
   };
   readonly spawn: { readonly gridCols: number; readonly gridRows: number; readonly margin: number };
   readonly maxPlayers: number;
+  readonly net: {
+    readonly sendHz: number; // têtes envoyées par seconde
+    readonly interpDelayMs: number; // retard d'affichage des serpents des autres
+    readonly peerTimeoutS: number; // sans aucun message : pair considéré parti
+    readonly beatIntervalS: number;
+    readonly probeTimeoutMs: number;
+    readonly connectTimeoutMs: number;
+  };
 }
 
 export const GAMEPLAY: GameplayConfig = {
@@ -72,6 +80,7 @@ export const GAMEPLAY: GameplayConfig = {
   },
   spawn: { gridCols: 16, gridRows: 10, margin: 60 },
   maxPlayers: 8,
+  net: { sendHz: 20, interpDelayMs: 100, peerTimeoutS: 10, beatIntervalS: 1, probeTimeoutMs: 4000, connectTimeoutMs: 15000 },
 };
 
 /** Copie de `base` avec des sections partiellement remplacées (tests, paramètres de debug). */

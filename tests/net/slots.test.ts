@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { claimSlot } from '../../src/spike/net/slots';
+import { claimSlot } from '../../src/net/slots';
 
 test('claimSlot takes first free slot', async () => {
   const taken = new Set(['snakopouille-r-1', 'snakopouille-r-2']);

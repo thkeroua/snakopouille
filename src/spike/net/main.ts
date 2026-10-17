@@ -1,9 +1,9 @@
 import { Peer, type DataConnection, type PeerOptions } from 'peerjs';
 import { readPairDescription } from './candidate';
-import { generateCode, normalizeCode, peerIdForCode } from './code';
+import { generateCode, normalizeCode, peerIdForCode } from '../../net/code';
 import type { ChannelKind, Msg } from './protocol';
-import { SLOTS, fetchPublicIp, peerIdForSlot, roomIdFromIp } from './roomId';
-import { claimSlot } from './slots';
+import { SLOTS, fetchPublicIp, peerIdForSlot, roomIdFromIp } from '../../net/roomId';
+import { claimSlot } from '../../net/slots';
 import { summarize, type Summary } from './stats';
 
 const PEER_OPTIONS: PeerOptions = {
