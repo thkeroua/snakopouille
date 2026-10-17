@@ -53,7 +53,8 @@ plan ou que l'écran se met en veille (l'hôte ne jouait pas pendant le test, il
   Le repli reste prévu si une autre box isole les appareils.
 - **(a bis)** Pour le plan 3 : l'hôte et les clients demandent un **Wake Lock écran** pendant le salon et la
   partie, et la boucle réseau de l'hôte ne dépend pas que de `setInterval` (on émet depuis la boucle de jeu).
-  Un joueur dont la page passe en arrière-plan est traité comme « figé » (son serpent continue tout droit
-  chez les autres, interpolation tenue), pas comme déconnecté, tant que le canal reste ouvert.
+  Un joueur dont la page passe en arrière-plan est traité comme « figé » (son serpent reste immobile
+  chez les autres, l'interpolation tient la dernière position), pas comme déconnecté, tant qu'il donne
+  signe de vie (battement réseau d'1 s, délai de coupure 10 s).
 - **(b) Rendu** : pas encore de mesure K10. On garde `maxDpr = 1.5` et `glowMode = 'stroke'` ; à revoir
   quand le banc sera fait.
