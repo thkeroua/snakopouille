@@ -255,7 +255,7 @@ test('buildScene deterministic', () => {
 | Critère | Seuil « OK » |
 |---|---|
 | Découverte automatique | la partie apparaît en < 5 s |
-| Type de connexion | `host`, `prflx` ou `srflx` (pas `relay`) |
+| Paire ICE (local→distant) | ni `relay` d’un côté ni de l’autre ; `host→host`/`host→prflx` = local direct ; `srflx` = passe par l’adresse publique (OK si RTT bas) |
 | RTT `fast` p95 | < 60 ms |
 | Perte `fast` | < 3 % |
 | Gigue `heads` p95 | < 80 ms |

@@ -1,5 +1,5 @@
 import { Peer, type DataConnection, type PeerOptions } from 'peerjs';
-import { readCandidateType, type CandidateType } from './candidate';
+import { readPairDescription } from './candidate';
 import { generateCode, normalizeCode, peerIdForCode } from './code';
 import type { ChannelKind, Msg } from './protocol';
 import { SLOTS, fetchPublicIp, peerIdForSlot, roomIdFromIp } from './roomId';
@@ -15,6 +15,7 @@ const PING_HZ = 20;
 const PHASE_MS = 30_000;
 const LOST_AFTER_MS = 1000;
 const HEADS_HZ = 20;
+const CONNECT_TIMEOUT_MS = 15_000;
 
 // ---------- UI ----------
 
@@ -91,15 +92,18 @@ function logError(msg: string) {
 let publicIp: string | null = null;
 let roomId: string | null = null;
 let mode: 'slot' | 'code' | null = null;
+let busy = false; // hôte ou invité en cours : l'UI d'accueil ne doit plus bouger
 
-(async () => {
+const ipReady = (async () => {
   try {
     publicIp = await fetchPublicIp();
     roomId = await roomIdFromIp(publicIp);
-    statusEl.textContent = `IP publique : ${maskIp(publicIp)} — salon : ${roomId}`;
-    searchBtn.disabled = false;
+    if (!busy) {
+      statusEl.textContent = `IP publique : ${maskIp(publicIp)} — salon : ${roomId}`;
+      searchBtn.disabled = false;
+    }
   } catch (e) {
-    statusEl.textContent = 'IP publique indisponible — utilisez le code';
+    if (!busy) statusEl.textContent = 'IP publique indisponible — utilisez le code';
     logError(`ipify: ${String(e)}`);
   }
 })();
@@ -116,7 +120,10 @@ function errType(e: unknown): string {
 // ---------- hôte ----------
 
 hostBtn.addEventListener('click', async () => {
+  busy = true;
   hostBtn.disabled = searchBtn.disabled = joinCodeBtn.disabled = true;
+  statusEl.textContent = 'Préparation de l’hébergement…';
+  await ipReady; // sinon on hébergerait sans slot alors que l'IP arrive dans la seconde
   const peers: Peer[] = [];
   let slotLabel = 'aucun slot (pas d’IP publique)';
 
@@ -167,7 +174,56 @@ function openPeer(id: string, keep: Peer[]): Promise<'ok' | 'taken'> {
   });
 }
 
-const guests = new Set<DataConnection>();
+// ---------- liens (canal PeerJS fiable, ou canal brut vraiment non fiable) ----------
+
+type Link = { send(m: Msg): void; onMsg(fn: (m: Msg) => void): () => void; info: string };
+
+function connLink(conn: DataConnection): Link {
+  return {
+    info: 'PeerJS reliable (ordered, retransmissions illimitées)',
+    send: (m) => send(conn, m),
+    onMsg(fn) {
+      const h = (raw: unknown) => fn(raw as Msg);
+      conn.on('data', h);
+      return () => conn.off('data', h);
+    },
+  };
+}
+
+/**
+ * PeerJS `reliable:false` ne fait que `ordered:false` : SCTP retransmet quand même
+ * indéfiniment, ce qui masquerait les pertes. On ouvre donc, des deux côtés, un canal
+ * négocié sur la même RTCPeerConnection avec maxRetransmits: 0 (comme le jeu le fera).
+ */
+function rawLink(pc: RTCPeerConnection): { link: Link; ready: Promise<void> } {
+  const dc = pc.createDataChannel('fast-raw', { negotiated: true, id: 7, ordered: false, maxRetransmits: 0 });
+  const ready = new Promise<void>((resolve) => {
+    if (dc.readyState === 'open') resolve();
+    else dc.addEventListener('open', () => resolve(), { once: true });
+  });
+  const link: Link = {
+    info: `canal brut ordered=${dc.ordered} maxRetransmits=${dc.maxRetransmits}`,
+    send(m) {
+      if (dc.readyState === 'open') dc.send(JSON.stringify(m));
+    },
+    onMsg(fn) {
+      const h = (e: MessageEvent) => fn(JSON.parse(e.data as string) as Msg);
+      dc.addEventListener('message', h);
+      return () => dc.removeEventListener('message', h);
+    },
+  };
+  return { link, ready };
+}
+
+function answerPings(link: Link) {
+  link.onMsg((msg) => {
+    if (msg.t === 'ping') link.send({ t: 'pong', seq: msg.seq, ts: msg.ts });
+  });
+}
+
+// ---------- hôte : connexions entrantes ----------
+
+const guests = new Map<DataConnection, Link>();
 let headsTimer: number | undefined;
 
 function onHostConnection(conn: DataConnection) {
@@ -180,13 +236,13 @@ function onHostConnection(conn: DataConnection) {
     }
     log(`invité ${meta.name ?? '?'} connecté (${meta.channel})`);
     if (meta.channel === 'fast') {
-      guests.add(conn);
+      const { link } = rawLink(conn.peerConnection);
+      answerPings(link);
+      guests.set(conn, link);
       headsTimer ??= window.setInterval(sendHeads, 1000 / HEADS_HZ);
+    } else {
+      answerPings(connLink(conn));
     }
-  });
-  conn.on('data', (raw) => {
-    const msg = raw as Msg;
-    if (msg.t === 'ping') send(conn, { t: 'pong', seq: msg.seq, ts: msg.ts });
   });
   conn.on('close', () => {
     guests.delete(conn);
@@ -203,7 +259,7 @@ function sendHeads() {
     data.push(800 + 600 * Math.cos(t * 0.5 + i), 500 + 400 * Math.sin(t * 0.7 + i), (t + i) % (2 * Math.PI), i % 2);
   }
   const msg: Msg = { t: 'heads', seq: headsSeq++, ts: performance.now(), data };
-  for (const g of guests) send(g, msg);
+  for (const link of guests.values()) link.send(msg);
 }
 
 function send(conn: DataConnection, msg: Msg) {
@@ -245,6 +301,7 @@ searchBtn.addEventListener('click', () => {
     );
     void Promise.all(probes).then(() => {
       peer.destroy();
+      if (busy) return;
       searchBtn.disabled = false;
       gamesEl.innerHTML = '';
       if (found.length === 0) gamesEl.textContent = 'Aucune partie trouvée sur ce Wi-Fi.';
@@ -274,10 +331,31 @@ joinCodeBtn.addEventListener('click', () => {
 
 // ---------- invité + mesures ----------
 
+type PingResult = { rtt: Summary; lossPct: number };
+type Report = {
+  failed?: string;
+  connectMs?: number;
+  pairReliable?: string;
+  pairFast?: string;
+  fastInfo?: string;
+  reliable?: PingResult;
+  fast?: PingResult;
+  jitter?: Summary;
+};
+
 function join(hostPeerId: string) {
+  busy = true;
   hostBtn.disabled = searchBtn.disabled = joinCodeBtn.disabled = true;
   gamesEl.innerHTML = '';
   const clickedAt = performance.now();
+  let connected = false;
+  // Un échec de connexion est un résultat : on le rend copiable avec les erreurs.
+  setTimeout(() => {
+    if (!connected) {
+      renderResults({ failed: `pas de connexion après ${CONNECT_TIMEOUT_MS / 1000} s` });
+      log('connexion échouée');
+    }
+  }, CONNECT_TIMEOUT_MS);
   const peer = new Peer(PEER_OPTIONS);
   peer.on('error', (e) => logError(`invité: ${errType(e)}`));
   peer.once('open', () => {
@@ -292,65 +370,70 @@ function join(hostPeerId: string) {
         conn.on('error', (e) => logError(`${channel}: ${errType(e)}`));
         conn.on('close', () => log(`connexion ${channel} fermée`));
       });
-    void Promise.all([open('reliable'), open('fast')]).then(([reliable, fast]) =>
-      runMeasurements(reliable, fast, performance.now() - clickedAt),
-    );
+    void Promise.all([open('reliable'), open('fast')]).then(async ([reliable, fast]) => {
+      const raw = rawLink(fast.peerConnection);
+      await raw.ready;
+      connected = true;
+      await runMeasurements(connLink(reliable), raw.link, reliable, fast, performance.now() - clickedAt);
+    });
   });
 }
 
-type PingResult = { rtt: Summary; lossPct: number };
-
-async function runMeasurements(reliable: DataConnection, fast: DataConnection, connectMs: number) {
+async function runMeasurements(
+  reliable: Link,
+  fast: Link,
+  reliableConn: DataConnection,
+  fastConn: DataConnection,
+  connectMs: number,
+) {
   log(`connecté en ${Math.round(connectMs)} ms — mesures pendant ${(2 * PHASE_MS) / 1000} s…`);
-  let candidate: CandidateType = 'unknown';
+  const report: Report = { connectMs, fastInfo: fast.info };
   try {
-    candidate = await readCandidateType(fast.peerConnection);
+    report.pairReliable = await readPairDescription(reliableConn.peerConnection);
+    report.pairFast = await readPairDescription(fastConn.peerConnection);
   } catch (e) {
     logError(`getStats: ${String(e)}`);
   }
-  log(`type de connexion : ${candidate}`);
+  log(`type de connexion : ${report.pairFast}`);
 
   const headGaps: number[] = [];
   let lastHeadAt = 0;
-  fast.on('data', (raw) => {
-    if ((raw as Msg).t !== 'heads') return;
+  fast.onMsg((msg) => {
+    if (msg.t !== 'heads') return;
     const now = performance.now();
     if (lastHeadAt) headGaps.push(now - lastHeadAt);
     lastHeadAt = now;
   });
 
-  const partial = { connectMs, candidate } as Parameters<typeof renderResults>[0];
-  renderResults(partial);
-  partial.reliable = await pingPhase(reliable);
-  renderResults(partial);
-  partial.fast = await pingPhase(fast);
-  partial.jitter = summarize(headGaps);
-  renderResults(partial);
+  renderResults(report);
+  report.reliable = await pingPhase(reliable);
+  renderResults(report);
+  report.fast = await pingPhase(fast);
+  report.jitter = summarize(headGaps);
+  renderResults(report);
   log('mesures terminées');
 }
 
-function pingPhase(conn: DataConnection): Promise<PingResult> {
+function pingPhase(link: Link): Promise<PingResult> {
   return new Promise((resolve) => {
-    const sentAt = new Map<number, number>();
+    const sentAt = new Set<number>();
     const rtts: number[] = [];
     let seq = 0;
-    const onData = (raw: unknown) => {
-      const msg = raw as Msg;
+    const off = link.onMsg((msg) => {
       if (msg.t !== 'pong' || !sentAt.has(msg.seq)) return;
       const rtt = performance.now() - msg.ts;
       sentAt.delete(msg.seq);
       if (rtt <= LOST_AFTER_MS) rtts.push(rtt);
-    };
-    conn.on('data', onData);
+    });
     const timer = window.setInterval(() => {
       const ts = performance.now();
-      sentAt.set(seq, ts);
-      send(conn, { t: 'ping', seq: seq++, ts });
+      sentAt.add(seq);
+      link.send({ t: 'ping', seq: seq++, ts });
     }, 1000 / PING_HZ);
     setTimeout(() => {
       clearInterval(timer);
       setTimeout(() => {
-        conn.off('data', onData);
+        off();
         const lossPct = seq === 0 ? 100 : ((seq - rtts.length) / seq) * 100;
         resolve({ rtt: summarize(rtts), lossPct });
       }, LOST_AFTER_MS);
@@ -363,25 +446,25 @@ function fmt(s: Summary): string {
   return `n=${s.count} min=${r(s.min)} moy=${r(s.avg)} p50=${r(s.p50)} p95=${r(s.p95)} max=${r(s.max)} ms`;
 }
 
-function renderResults(r: {
-  connectMs: number;
-  candidate: CandidateType;
-  reliable?: PingResult;
-  fast?: PingResult;
-  jitter?: Summary;
-}) {
+function renderResults(r: Report) {
   const lines = [
     `Date : ${new Date().toISOString()}`,
     `Appareil : ${navigator.userAgent}`,
     `IP publique : ${publicIp ? maskIp(publicIp) : 'indisponible'} — salon : ${roomId ?? '-'}`,
     `Mode : ${mode}`,
-    `Temps de connexion : ${Math.round(r.connectMs)} ms`,
-    `Type de connexion : ${r.candidate}`,
-    `RTT reliable : ${r.reliable ? fmt(r.reliable.rtt) : 'en cours…'}`,
-    `Perte reliable : ${r.reliable ? r.reliable.lossPct.toFixed(1) + ' %' : '-'}`,
-    `RTT fast : ${r.fast ? fmt(r.fast.rtt) : 'en attente…'}`,
-    `Perte fast : ${r.fast ? r.fast.lossPct.toFixed(1) + ' %' : '-'}`,
-    `Gigue heads : ${r.jitter ? fmt(r.jitter) : 'en attente…'}`,
+    ...(r.failed
+      ? [`CONNEXION ÉCHOUÉE : ${r.failed}`]
+      : [
+          `Temps de connexion : ${Math.round(r.connectMs ?? 0)} ms`,
+          `Paire ICE reliable (local→distant) : ${r.pairReliable ?? '?'}`,
+          `Paire ICE fast (local→distant) : ${r.pairFast ?? '?'}`,
+          `Canal fast : ${r.fastInfo ?? '?'}`,
+          `RTT reliable : ${r.reliable ? fmt(r.reliable.rtt) : 'en cours…'}`,
+          `Perte reliable (pong > ${LOST_AFTER_MS} ms compté perdu) : ${r.reliable ? r.reliable.lossPct.toFixed(1) + ' %' : '-'}`,
+          `RTT fast : ${r.fast ? fmt(r.fast.rtt) : 'en attente…'}`,
+          `Perte fast (pong > ${LOST_AFTER_MS} ms compté perdu) : ${r.fast ? r.fast.lossPct.toFixed(1) + ' %' : '-'}`,
+          `Écart entre heads reçus (nominal 50 ms, 60 s) : ${r.jitter ? fmt(r.jitter) : 'en attente…'}`,
+        ]),
     `Erreurs : ${errors.length ? errors.join(' | ') : 'aucune'}`,
   ];
   resultsEl.textContent = lines.join('\n');

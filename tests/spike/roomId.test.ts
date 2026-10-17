@@ -33,3 +33,9 @@ test('fetchPublicIp rejects on http error', async () => {
   const f = async () => new Response('nope', { status: 503 });
   await expect(fetchPublicIp(f as typeof fetch)).rejects.toThrow();
 });
+
+test('fetchPublicIp rejects after timeout on hanging fetch', async () => {
+  const hanging = (_u: unknown, init?: { signal?: AbortSignal }) =>
+    new Promise<Response>((_res, rej) => init?.signal?.addEventListener('abort', () => rej(new Error('aborted'))));
+  await expect(fetchPublicIp(hanging as typeof fetch, 50)).rejects.toThrow();
+});

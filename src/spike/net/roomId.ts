@@ -1,7 +1,14 @@
 const IPIFY_URL = 'https://api.ipify.org?format=json';
 
-export async function fetchPublicIp(fetchFn: typeof fetch = fetch): Promise<string> {
-  const res = await fetchFn(IPIFY_URL);
+export async function fetchPublicIp(fetchFn: typeof fetch = fetch, timeoutMs = 3000): Promise<string> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  let res: Response;
+  try {
+    res = await fetchFn(IPIFY_URL, { signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) throw new Error(`ipify HTTP ${res.status}`);
   const json = (await res.json()) as { ip?: unknown };
   if (typeof json.ip !== 'string' || json.ip === '') throw new Error('ipify: missing ip');
