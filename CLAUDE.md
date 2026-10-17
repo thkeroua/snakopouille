@@ -13,8 +13,8 @@ Jeu navigateur 2D façon slither.io, multijoueur **en réseau local** (WebRTC di
 
 | Plan | Contenu | État |
 |---|---|---|
-| 1 | Spike réseau + banc de rendu sur Lenovo K10 (`plans/2026-10-17-plan-1-spike-reseau-k10.md`) | à exécuter |
-| 2 | Cœur du jeu en solo local : config gameplay, simulation, rendu néon, HUD, pilotage doigt/souris (`plans/2026-10-17-plan-2-coeur-du-jeu-solo.md`) | à exécuter après le plan 1 |
+| 1 | Spike réseau + banc de rendu sur Lenovo K10 (`plans/2026-10-17-plan-1-spike-reseau-k10.md`) | code fait ; reste : dépôt GitHub + Pages, test sur tablettes (Task 6) |
+| 2 | Cœur du jeu en solo local : config gameplay, simulation, rendu néon, HUD, pilotage doigt/souris (`plans/2026-10-17-plan-2-coeur-du-jeu-solo.md`) | fait et relu ; reste : validation FPS sur K10 (Task 11 step 4) |
 | 3 | Multijoueur : accueil (pseudo/couleur), découverte/code, salon, synchro (hôte = nourriture/points/têtes-à-tête/chrono, clients = leur serpent), fin de partie, rejouer | à écrire après le plan 2 (dépend du rapport du spike) |
 | plus tard | Bots, bonus/malus (voir `decisions.md`) | — |
 
