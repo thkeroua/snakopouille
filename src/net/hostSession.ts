@@ -3,6 +3,7 @@
 import type { GameplayConfig } from '../config/gameplay';
 import type { Food } from '../game/food';
 import { HostRules, createHost, type HostState } from '../game/hostRules';
+import { clamp } from '../game/math';
 import { buildRanking } from '../game/ranking';
 import { applyHead } from '../game/remote';
 import { Rng } from '../game/rng';
@@ -25,6 +26,7 @@ import {
 export type HostPhase = 'lobby' | 'playing' | 'ended';
 
 const MAX_NAME = 16;
+const MAX_EAT_IDS = 64; // nourriture touchée en un pas : quelques unités en pratique
 const HOST_FOOD_PALETTE = ['#fff']; // la couleur ne sert qu'à l'affichage, côté clients
 
 type Guest = {
@@ -281,14 +283,20 @@ export class HostSession {
     if (this.phaseValue !== 'playing' || !w) return;
     const s = w.byId.get(id);
     if (!s || !s.alive || m.life !== w.life.get(id)) return;
+    // Pas d'anti-triche (spec §1), mais un message mal formé ne doit pas casser la partie
+    // de tout le monde (NaN ou saut énorme → corps sans fin).
     if (m.t === 'me') {
+      if (![m.ts, m.x, m.y, m.a].every(Number.isFinite)) return;
       const last = w.lastTs.get(id);
       if (last !== null && last !== undefined && m.ts <= last) return;
       w.lastTs.set(id, m.ts);
-      w.pendingMe.get(id)!.push(m);
+      const { width, height } = this.cfg.world;
+      w.pendingMe.get(id)!.push({ ...m, x: clamp(m.x, 0, width), y: clamp(m.y, 0, height) });
     } else if (m.t === 'eat') {
-      w.rules.eatRequest(s, m.ids, []);
+      if (!Array.isArray(m.ids)) return;
+      w.rules.eatRequest(s, m.ids.slice(0, MAX_EAT_IDS), []);
     } else {
+      if (typeof m.killer !== 'string' || m.killer === id || !w.byId.has(m.killer)) return;
       w.reported.push({ victim: id, killer: m.killer });
     }
   }

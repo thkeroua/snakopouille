@@ -193,6 +193,24 @@ test('end after durationS sends the ranking and allows start() again with scores
   expect(peers[1].last('end')!.ranking.every((r) => r.score === 0 && r.deaths === 0)).toBe(true);
 });
 
+test('malformed play messages are ignored (no NaN, no unknown or self killer)', () => {
+  const { host, peers, tick } = setup();
+  host.start();
+  peers[1].me(300, 300);
+  tick();
+  peers[1].ch.sendFast({ t: 'me', life: 1, ts: 999, x: NaN, y: 300, a: 0, b: 0 });
+  peers[1].ch.sendFast({ t: 'me', life: 1, ts: 1000, x: 1e9, y: -1e9, a: 0, b: 0 });
+  peers[1].ch.sendReliable({ t: 'eat', life: 1, ids: 'x' as unknown as number[] });
+  peers[1].ch.sendReliable({ t: 'died', life: 1, killer: 'nobody' });
+  peers[1].ch.sendReliable({ t: 'died', life: 1, killer: 'p2' });
+  tick(3);
+  const h = headOf(peers[0], 'p2')!;
+  expect(Number.isFinite(h[3]) && Number.isFinite(h[4])).toBe(true);
+  expect(h[3]).toBeLessThanOrEqual(QUIET.world.width);
+  expect(h[4]).toBeGreaterThanOrEqual(0);
+  expect(peers[0].all('death')).toHaveLength(0);
+});
+
 test('join during a match is rejected with playing', () => {
   const { host } = setup();
   host.start();
