@@ -23,3 +23,7 @@ Voir `docs/superpowers/specs/2026-10-17-snakopouille-design.md`. Ajouts depuis :
   la détection tête contre tête ; la détection tête contre corps (`headHitsBody`) bascule côté client.
 - **2026-10-17 — Rendu.** `src/config/render.ts` a `glowMode` (`stroke` double trait / `half` halo en
   demi-résolution / `none`) et `maxDpr`. Les valeurs définitives seront choisies d'après le banc K10.
+- **2026-10-18 — Spike réseau (rapport `docs/spikes/2026-10-17-resultats-spike.md`).** Connexion directe
+  locale validée (`host→host`, RTT p95 10 ms, 0 % de perte) : pas de relais pour la v1. L'émission de l'hôte
+  est bridée à ~1 Hz quand sa page n'est plus active : Wake Lock écran pendant salon et partie, émission
+  réseau cadencée par la boucle de jeu. Banc de rendu K10 reporté : `maxDpr`/`glowMode` restent par défaut.
