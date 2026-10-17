@@ -1,50 +1,25 @@
-import { GAMEPLAY, withConfig, type GameplayConfig } from './config/gameplay';
+// Routeur : accueil → entraînement solo, ou partie réseau (héberger / rejoindre → salon → partie).
+import { GAMEPLAY, withConfig } from './config/gameplay';
 import { RENDER } from './config/render';
-import { dummyInput } from './debug/dummies';
-import { Rng } from './game/rng';
-import { Match, SIM_DT } from './game/match';
-import type { Player, SnakeInput } from './game/types';
-import { Controls } from './input/controls';
-import { Renderer } from './render/renderer';
-import { Hud } from './ui/hud';
+import { GameShell } from './app/shell';
+import { runOnline } from './app/online';
+import { startSolo } from './app/solo';
+import { keepAwake, releaseAwake } from './app/wakeLock';
+import { ClientSession } from './net/clientSession';
+import { HostSession } from './net/hostSession';
+import { connectToHost, findGames, getRoomId, openHost } from './net/peerNet';
+import type { Channel } from './net/channel';
+import type { RejectReason } from './net/protocol';
+import { hideScreen, showHome } from './ui/home';
+import { showLobby } from './ui/lobby';
+import { loadPrefs, savePrefs, type Prefs } from './ui/prefs';
 import { bindPortraitOverlay, showEndScreen } from './ui/screens';
-import type { Viewport } from './view/viewport';
 
-const MAX_STEPS_PER_FRAME = 5;
-const OWN_ID = 'me';
-
-// ---------- paramètres d'URL (debug / test) ----------
 const params = new URLSearchParams(location.search);
-const num = (k: string, def: number) => {
-  const v = Number(params.get(k));
-  return params.has(k) && Number.isFinite(v) ? v : def;
-};
-const dummies = Math.max(0, Math.min(GAMEPLAY.maxPlayers - 1, Math.floor(num('dummies', 3))));
-const name = (params.get('name') ?? 'Toi').slice(0, 16);
-const showFps = params.get('fps') === '1';
-const startPointsOverride = params.has('startPoints') ? num('startPoints', GAMEPLAY.snake.startPoints) : null;
-const cfg: GameplayConfig = withConfig(GAMEPLAY, {
-  match: { durationS: num('duration', GAMEPLAY.match.durationS) },
-});
-let seed = num('seed', Date.now());
-
-// ---------- DOM ----------
-const canvas = document.getElementById('game') as HTMLCanvasElement;
-const hudRoot = document.getElementById('hud')!;
-const boostBtn = document.getElementById('boost')!;
-const endRoot = document.getElementById('end')!;
-const fpsEl = document.getElementById('fps')!;
+const homeRoot = document.getElementById('home')!;
+const lobbyRoot = document.getElementById('lobby')!;
 bindPortraitOverlay(document.getElementById('portrait')!);
-fpsEl.style.display = showFps ? '' : 'none';
-
-const renderer = new Renderer(canvas, cfg.world.width, cfg.world.height);
-let viewport: Viewport = renderer.resize(window.innerWidth, window.innerHeight);
-const onResize = () => (viewport = renderer.resize(window.innerWidth, window.innerHeight));
-window.addEventListener('resize', onResize);
-window.addEventListener('orientationchange', onResize);
-
-const controls = new Controls(canvas, boostBtn, () => viewport);
-const hud = new Hud(hudRoot);
+const shell = new GameShell();
 
 window.addEventListener(
   'pointerdown',
@@ -54,65 +29,192 @@ window.addEventListener(
   { once: true },
 );
 
-// ---------- partie ----------
-const players: Player[] = [
-  { id: OWN_ID, name, color: RENDER.playerColors[0] },
-  ...Array.from({ length: dummies }, (_, i) => ({ id: `dummy${i + 1}`, name: `Mannequin ${i + 1}`, color: RENDER.playerColors[i + 1] })),
-];
+const durationParam = Number(params.get('duration'));
+const onlineCfg =
+  params.has('duration') && Number.isFinite(durationParam) && durationParam > 0
+    ? withConfig(GAMEPLAY, { match: { durationS: durationParam } })
+    : GAMEPLAY;
 
-let match: Match;
-let dummyRng: Rng;
-let ended = false;
+const roomIdReady = getRoomId();
 
-function newMatch() {
-  match = new Match(players, cfg, seed, RENDER.foodColors);
-  dummyRng = new Rng(seed ^ 0x9e3779b9);
-  seed = (seed * 1664525 + 1013904223) >>> 0;
-  if (startPointsOverride !== null) match.snakes[0].points = startPointsOverride;
-  ended = false;
-  hud.update(match, OWN_ID, true);
+const REJECT_TEXT: Record<RejectReason, string> = {
+  full: 'La partie est complète (8 joueurs).',
+  playing: 'La partie a déjà commencé.',
+  version: 'Version différente : rechargez la page.',
+};
+const CANNOT_HOST = "Impossible de créer la partie (pas d'internet ?).";
+
+// ---------- accueil ----------
+
+function goHome(message?: string): void {
+  releaseAwake();
+  shell.showGame(false);
+  hideScreen(lobbyRoot);
+  showHome(homeRoot, {
+    prefs: loadPrefs(),
+    message,
+    onHost: (p) => void host(p),
+    onJoin: (peerId, p) => void join(peerId, p),
+    onSolo: (p) => {
+      savePrefs(p);
+      hideScreen(homeRoot);
+      startSolo(shell, params, p.name, () => goHome());
+    },
+    findGames: async () => {
+      const room = await roomIdReady;
+      return room ? findGames(room, GAMEPLAY.net.probeTimeoutMs) : null;
+    },
+  });
 }
-newMatch();
 
-// ---------- boucle ----------
-const inputs = new Map<string, SnakeInput>(); // réutilisée à chaque pas
-let acc = 0;
-let lastT = performance.now();
-let frames = 0;
-let fpsT = lastT;
-let simMs = 0;
+// ---------- partie réseau ----------
 
-function frame(t: number) {
-  acc += (t - lastT) / 1000;
-  lastT = t;
-  if (acc > SIM_DT * MAX_STEPS_PER_FRAME) acc = SIM_DT * MAX_STEPS_PER_FRAME; // on abandonne le retard
+type Online = {
+  session: ClientSession;
+  host: HostSession | null;
+  destroyNet: () => void;
+  beatTimer: number;
+  stopLoop: (() => void) | null;
+  inGame: boolean;
+};
+let current: Online | null = null;
 
-  const s0 = performance.now();
-  while (acc >= SIM_DT && !ended) {
-    acc -= SIM_DT;
-    inputs.set(OWN_ID, controls.read());
-    for (const s of match.snakes) if (s.id !== OWN_ID) inputs.set(s.id, dummyInput(s, match.host.time, dummyRng, cfg.world.width, cfg.world.height));
-    const events = match.tick(SIM_DT, inputs);
-    if (events.some((e) => e.type === 'end')) {
-      ended = true;
-      hud.update(match, OWN_ID, true);
-      showEndScreen(endRoot, match.ranking(), { title: 'Fin de partie', buttons: [{ label: 'Rejouer', onClick: newMatch }] });
+async function host(p: Prefs): Promise<void> {
+  savePrefs(p);
+  const h = new HostSession(onlineCfg, { seed: Date.now() >>> 0, now: () => performance.now(), colorCount: RENDER.playerColors.length });
+  try {
+    const net = await openHost(await roomIdReady, () => h.probeInfo(), (ch) => h.addGuest(ch));
+    if (net.slot === null && !net.code) {
+      net.destroy();
+      goHome(CANNOT_HOST);
+      return;
     }
+    h.code = net.code;
+    enterOnline(h.connectLocal(), p, h, net.destroy);
+  } catch {
+    goHome(CANNOT_HOST);
   }
-  if (ended) acc = 0;
-  simMs += performance.now() - s0;
-
-  renderer.draw(match, OWN_ID);
-  hud.update(match, OWN_ID);
-
-  frames++;
-  if (showFps && t - fpsT >= 1000) {
-    const own = match.snakes[0];
-    fpsEl.textContent = `${Math.round((frames * 1000) / (t - fpsT))} FPS · sim ${(simMs / frames).toFixed(2)} ms · ${Math.floor(own.points)} pts · ${own.path.count()} éch.`;
-    frames = 0;
-    simMs = 0;
-    fpsT = t;
-  }
-  requestAnimationFrame(frame);
 }
-requestAnimationFrame(frame);
+
+async function join(peerId: string, p: Prefs): Promise<void> {
+  savePrefs(p);
+  try {
+    const ch = await connectToHost(peerId, GAMEPLAY.net.connectTimeoutMs);
+    enterOnline(ch, p, null, () => ch.close());
+  } catch {
+    goHome('Connexion impossible');
+  }
+}
+
+function enterOnline(ch: Channel, p: Prefs, h: HostSession | null, destroyNet: () => void): void {
+  hideScreen(homeRoot);
+  keepAwake();
+  const o: Online = {
+    session: null as unknown as ClientSession,
+    host: h,
+    destroyNet,
+    beatTimer: 0,
+    stopLoop: null,
+    inGame: false,
+  };
+  current = o;
+  const session = new ClientSession(ch, p.name, p.color, onlineCfg, {
+    now: () => performance.now(),
+    palette: RENDER.playerColors,
+    foodPalette: RENDER.foodColors,
+  });
+  o.session = session;
+  // Le salon de l'hôte arrive pendant le constructeur (canal mémoire synchrone) : on l'affiche ici.
+  if (session.phase === 'lobby') renderLobby(o);
+  o.beatTimer = window.setInterval(() => {
+    h?.beat();
+    session.beat();
+  }, GAMEPLAY.net.beatIntervalS * 1000);
+  session.onChange = (what) => {
+    if (current !== o) return;
+    // Après une première partie, l'écran de fin reste affiché : le salon ne se redessine plus.
+    if (what === 'lobby') {
+      if (!o.inGame) renderLobby(o);
+    } else if (what === 'start') {
+      o.inGame = true;
+      hideScreen(lobbyRoot);
+      shell.hideEnd();
+      o.stopLoop ??= runOnline(shell, session, h);
+    } else if (what === 'end') showOnlineEnd(o);
+    else if (what === 'closed') onClosed(o);
+  };
+}
+
+function renderLobby(o: Online): void {
+  showLobby(lobbyRoot, o.session, {
+    isHost: o.host !== null,
+    onStart: () => o.host?.start(),
+    onLeave: () => leaveOnline(),
+  });
+}
+
+function showOnlineEnd(o: Online): void {
+  const buttons = o.host
+    ? [
+        { label: 'Rejouer', onClick: () => o.host?.start() },
+        { label: 'Menu', onClick: () => leaveOnline() },
+      ]
+    : [{ label: 'Menu', onClick: () => leaveOnline() }];
+  showEndScreen(shell.endRoot, o.session.endRanking ?? o.session.ranking(), {
+    title: 'Fin de partie',
+    buttons,
+    note: o.host ? undefined : "En attente de l'hôte…",
+  });
+}
+
+function teardown(o: Online): void {
+  window.clearInterval(o.beatTimer);
+  o.stopLoop?.();
+  o.host?.close();
+  o.destroyNet();
+  if (current === o) current = null;
+}
+
+function onClosed(o: Online): void {
+  const reason = o.session.closeReason;
+  const wasInGame = o.inGame;
+  teardown(o);
+  if (reason && reason !== 'host-left') {
+    goHome(REJECT_TEXT[reason]);
+    return;
+  }
+  if (wasInGame) {
+    releaseAwake();
+    showEndScreen(shell.endRoot, o.session.ranking(), {
+      title: "L'hôte a quitté la partie",
+      buttons: [{ label: 'Menu', onClick: () => goHome() }],
+    });
+  } else {
+    goHome("L'hôte a quitté la partie.");
+  }
+}
+
+function leaveOnline(): void {
+  const o = current;
+  if (!o) return goHome();
+  o.session.leave();
+  teardown(o);
+  goHome();
+}
+
+// Page fermée ou rechargée : on prévient tout de suite au lieu d'attendre le délai de 10 s.
+window.addEventListener('pagehide', () => {
+  const o = current;
+  if (!o) return;
+  o.session.leave();
+  o.host?.close();
+});
+
+// ---------- démarrage ----------
+
+if (params.get('solo') === '1') {
+  hideScreen(homeRoot);
+  startSolo(shell, params, loadPrefs().name, () => goHome());
+} else {
+  goHome();
+}

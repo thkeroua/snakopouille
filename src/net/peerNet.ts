@@ -8,7 +8,7 @@ import { SLOTS, fetchPublicIp, peerIdForSlot, roomIdFromIp } from './roomId';
 import { claimSlot } from './slots';
 
 const PEER_OPTIONS: PeerOptions = {
-  debug: 1,
+  debug: 0, // les sondes de slots libres et l'id pris sont des « erreurs » attendues
   config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] },
 };
 const CODE_ATTEMPTS = 5;
@@ -171,7 +171,8 @@ export function findGames(roomId: string, timeoutMs: number = GAMEPLAY.net.probe
             }, timeoutMs);
             conn.on('data', (raw) => {
               const m = raw as Msg;
-              if (m.t !== 'hello') return;
+              // Seules les réponses du jeu comptent (pas celles d'une ancienne page de test).
+              if (m?.t !== 'hello' || typeof m.players !== 'number' || typeof m.max !== 'number') return;
               found.push({ peerId, slot, name: String(m.name), players: m.players, max: m.max, playing: m.playing });
               clearTimeout(timer);
               conn.close();
