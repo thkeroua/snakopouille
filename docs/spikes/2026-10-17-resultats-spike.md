@@ -11,7 +11,7 @@ Date : 2026-10-18 · Déploiement : https://thkeroua.github.io/snakopouille/
 | 3 | Second hôte → slot 2 | à faire (non bloquant) |
 | 1bis | K10 ↔ K10 | à faire (non bloquant) |
 | 4 | Banc de rendu K10 | **reporté** par Thibault (« tests FPS plus tard ») |
-| 5 | Jeu solo K10 `?dummies=7&fps=1&startPoints=20000` | **reporté** |
+| 5 | Jeu solo K10 `?solo=1&dummies=7&fps=1&startPoints=20000` | **reporté** |
 
 Retour qualitatif de Thibault : « en solo ça marche très bien » ; la partie de la K10 est apparue tout de suite côté PC.
 

@@ -13,9 +13,9 @@ Jeu navigateur 2D façon slither.io, multijoueur **en réseau local** (WebRTC di
 
 | Plan | Contenu | État |
 |---|---|---|
-| 1 | Spike réseau + banc de rendu sur Lenovo K10 (`plans/2026-10-17-plan-1-spike-reseau-k10.md`) | code fait ; reste : dépôt GitHub + Pages, test sur tablettes (Task 6) |
-| 2 | Cœur du jeu en solo local : config gameplay, simulation, rendu néon, HUD, pilotage doigt/souris (`plans/2026-10-17-plan-2-coeur-du-jeu-solo.md`) | fait et relu ; reste : validation FPS sur K10 (Task 11 step 4) |
-| 3 | Multijoueur : accueil (pseudo/couleur), découverte/code, salon, synchro (hôte = nourriture/points/têtes-à-tête/chrono, clients = leur serpent), fin de partie, rejouer | à écrire après le plan 2 (dépend du rapport du spike) |
+| 1 | Spike réseau + banc de rendu sur Lenovo K10 (`plans/2026-10-17-plan-1-spike-reseau-k10.md`) | fait : réseau direct validé (`docs/spikes/2026-10-17-resultats-spike.md`) ; reste : banc de rendu K10 (reporté par Thibault) |
+| 2 | Cœur du jeu en solo local : config gameplay, simulation, rendu néon, HUD, pilotage doigt/souris (`plans/2026-10-17-plan-2-coeur-du-jeu-solo.md`) | fait et relu ; reste : validation FPS sur K10 (`?solo=1&dummies=7&fps=1&startPoints=20000`, reportée) |
+| 3 | Multijoueur : accueil (pseudo/couleur), découverte/code, salon, synchro (hôte = nourriture/points/têtes-à-tête/chrono, clients = leur serpent), fin de partie, rejouer (`plans/2026-10-18-plan-3-multijoueur.md`) | fait et relu ; reste : partie à plusieurs tablettes avec Thibault (Task 10 step 2) |
 | plus tard | Bots, bonus/malus (voir `decisions.md`) | — |
 
 Chaque plan s'écrit avec le skill `superpowers:writing-plans` à partir du design. **Mode d'exécution choisi par Thibault : « d'une traite »**, avec `superpowers:executing-plans` : un seul agent exécute toutes les tâches, puis une relecture complète à la fin. On respecte les étapes « action humaine / avec Thibault » des plans : on s'arrête et on lui demande.
@@ -35,3 +35,9 @@ Chaque plan s'écrit avec le skill `superpowers:writing-plans` à partir du desi
 - `npm run dev` : serveur local (WebRTC fonctionne sur `localhost`, mais les tablettes ont besoin du déploiement HTTPS)
 - `npm test` : Vitest
 - `npm run build` : build de production dans `dist/`
+- URL : accueil par défaut ; `?solo=1` lance directement l'entraînement (avec `dummies`, `fps`, `startPoints`, `duration`, `seed`) ; `?duration=N` raccourcit aussi les parties hébergées.
+
+## Architecture (plan 3)
+
+- `src/game/` : simulation pure (solo = `Match`). `src/net/hostSession.ts` (logique hôte) et `src/net/clientSession.ts` (logique joueur) ne parlent qu'à des `Channel` ; l'hôte joue via un canal mémoire (`connectLocal`). `src/net/peerNet.ts` est le seul fichier qui touche PeerJS/WebRTC.
+- Rendu et HUD lisent un `GameView` (`src/game/view.ts`), implémenté par `Match` et `ClientSession`.
