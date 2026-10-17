@@ -65,3 +65,12 @@ test('reset', () => {
   expect(p.tail()).toEqual({ x: 7, y: 8 });
   expect(p.length()).toBe(0);
 });
+
+test('first long move from a fresh path is sampled every spacing', () => {
+  const p = new SnakePath(4, { x: 0, y: 0 });
+  p.moveHead({ x: 40, y: 0 });
+  expect(p.count()).toBeGreaterThanOrEqual(11);
+  expect(p.length()).toBeCloseTo(40, 6);
+  for (let i = 1; i < p.count(); i++) expect(Math.hypot(p.x(i - 1) - p.x(i), p.y(i - 1) - p.y(i))).toBeLessThanOrEqual(4 + 1e-6);
+  expect(p.tail()).toEqual({ x: 0, y: 0 });
+});
