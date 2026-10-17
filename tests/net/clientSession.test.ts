@@ -237,3 +237,27 @@ test('end stores the ranking and a new start resets everything', () => {
   expect(c.cfg.match.durationS).toBe(30);
   expect(c.time).toBe(0);
 });
+
+test('an eat the host ignored (sent just before a host-side death) does not hide the food after respawn', () => {
+  const { c, send, start, tick } = setup();
+  start([[1, 500, 495, 10]]);
+  tick(2); // 'eat' envoyé ; l'hôte l'ignore car il vient de tuer ce serpent (tête à tête)
+  expect(c.hiddenFood.has(1)).toBe(true);
+  send({ t: 'death', victim: 'p1', killer: null, cause: 'head-on', respawnAt: 5 });
+  send({ t: 'respawn', spawn: ['p1', 2, 900, 900, 0] });
+  expect(c.hiddenFood.has(1)).toBe(false);
+  expect(c.food.has(1)).toBe(true);
+});
+
+test('eat requests are capped like on the host and only sent ids are hidden', () => {
+  const food: FoodWire[] = Array.from({ length: 80 }, (_, i) => [i + 1, 500, 497, 5]);
+  const { c, sent, start, tick } = setup();
+  start(food);
+  tick();
+  const eat = sent.find((m) => m.t === 'eat') as Extract<Msg, { t: 'eat' }>;
+  expect(eat.ids).toHaveLength(64);
+  expect(c.hiddenFood.size).toBe(64);
+  tick();
+  expect(sent.filter((m) => m.t === 'eat')).toHaveLength(2);
+  expect(c.hiddenFood.size).toBe(80);
+});

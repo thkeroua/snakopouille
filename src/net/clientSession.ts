@@ -12,7 +12,7 @@ import type { SnakeId, SnakeInput } from '../game/types';
 import type { GameView } from '../game/view';
 import type { Channel } from './channel';
 import { HeadBuffer } from './interp';
-import { PROTOCOL_VERSION, type ColorIndex, type LobbyPlayer, type Msg, type RejectReason } from './protocol';
+import { MAX_EAT_IDS, PROTOCOL_VERSION, type ColorIndex, type LobbyPlayer, type Msg, type RejectReason } from './protocol';
 
 export type ClientPhase = 'connecting' | 'lobby' | 'playing' | 'ended' | 'closed';
 export type CloseReason = 'host-left' | RejectReason;
@@ -207,7 +207,12 @@ export class ClientSession implements GameView {
         s.boosting = false;
         s.respawnAt = 0;
         this.buffers.get(id)?.clear();
-        if (s === this.own) this.diedSent = false;
+        if (s === this.own) {
+          this.diedSent = false;
+          // Un 'eat' envoyé juste avant une mort décidée par l'hôte a été ignoré : sans ça la
+          // nourriture resterait cachée chez nous. Les 'del' en attente sont arrivés avant (voie ordonnée).
+          this.hidden.clear();
+        }
         break;
       }
       case 'left': {
@@ -283,7 +288,10 @@ export class ClientSession implements GameView {
   }
 
   private requestFood(own: SnakeState): void {
-    const ids = this.foodStore.touching(own.path.x(0), own.path.y(0), headRadius(own, this.cfg)).filter((id) => !this.hidden.has(id));
+    const ids = this.foodStore
+      .touching(own.path.x(0), own.path.y(0), headRadius(own, this.cfg))
+      .filter((id) => !this.hidden.has(id))
+      .slice(0, MAX_EAT_IDS); // l'hôte ignore le reste : on ne cache que ce qui est demandé
     if (ids.length === 0) return;
     for (const id of ids) this.hidden.add(id);
     this.ch.sendReliable({ t: 'eat', life: this.life.get(own.id)!, ids });

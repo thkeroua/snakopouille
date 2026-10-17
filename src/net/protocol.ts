@@ -3,6 +3,8 @@ import type { RankingRow } from '../game/ranking';
 import type { DeathCause, SnakeId } from '../game/types';
 
 export const PROTOCOL_VERSION = 1;
+/** Nourriture demandée en un seul 'eat' (quelques unités en pratique). */
+export const MAX_EAT_IDS = 64;
 export type ColorIndex = number; // indice dans RENDER.playerColors
 export type LobbyPlayer = { id: SnakeId; name: string; color: ColorIndex; host: boolean };
 export type FoodWire = [id: number, x: number, y: number, value: number];

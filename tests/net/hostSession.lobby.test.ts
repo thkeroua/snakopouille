@@ -85,18 +85,31 @@ test('9th player is rejected with full', () => {
   for (let i = 0; i < 7; i++) guest(host, `G${i}`);
   const ninth = guest(host, 'Neuf');
   expect(ninth.last('reject')).toEqual({ t: 'reject', reason: 'full' });
-  expect(ninth.closed()).toBe(true);
   expect(host.lobbyPlayers()).toHaveLength(8);
 });
 
-test('wrong protocol version is rejected and closed', () => {
+test('a rejected guest is not cut off by the host (the reject must leave first) and is then ignored', () => {
+  const { host, advance } = setup();
+  local(host);
+  for (let i = 0; i < 7; i++) guest(host, `G${i}`);
+  const ninth = guest(host, 'Neuf');
+  // Fermer tout de suite peut perdre le 'reject' sur un vrai WebRTC : c'est l'invité qui ferme.
+  expect(ninth.closed()).toBe(false);
+  ninth.ch.sendReliable({ t: 'join', v: PROTOCOL_VERSION, name: 'Encore', color: 0 });
+  expect(ninth.got.filter((m) => m.t === 'reject')).toHaveLength(1);
+  expect(ninth.got.some((m) => m.t === 'welcome' || m.t === 'lobby')).toBe(false);
+  advance(10_500);
+  host.beat();
+  expect(ninth.closed()).toBe(true);
+});
+
+test('wrong protocol version is rejected', () => {
   const { host } = setup();
   const [a, b] = memoryChannelPair();
   const p = peer(a);
   host.addGuest(b);
   a.sendReliable({ t: 'join', v: PROTOCOL_VERSION + 1, name: 'Vieux', color: 0 });
   expect(p.last('reject')).toEqual({ t: 'reject', reason: 'version' });
-  expect(p.closed()).toBe(true);
   expect(host.lobbyPlayers()).toHaveLength(0);
 });
 

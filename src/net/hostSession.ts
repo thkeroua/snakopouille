@@ -12,6 +12,7 @@ import { findSpawnPoint } from '../game/spawn';
 import type { MatchEvent, SnakeId } from '../game/types';
 import { memoryChannelPair, type Channel } from './channel';
 import {
+  MAX_EAT_IDS,
   PROTOCOL_VERSION,
   type ColorIndex,
   type FoodWire,
@@ -26,7 +27,6 @@ import {
 export type HostPhase = 'lobby' | 'playing' | 'ended';
 
 const MAX_NAME = 16;
-const MAX_EAT_IDS = 64; // nourriture touchée en un pas : quelques unités en pratique
 const HOST_FOOD_PALETTE = ['#fff']; // la couleur ne sert qu'à l'affichage, côté clients
 
 type Guest = {
@@ -35,6 +35,7 @@ type Guest = {
   host: boolean;
   /** null tant que le 'join' n'est pas accepté. */
   player: LobbyPlayer | null;
+  rejected: boolean;
 };
 
 type MeMsg = Extract<Msg, { t: 'me' }>;
@@ -226,7 +227,7 @@ export class HostSession {
   // ---------- connexions ----------
 
   private register(ch: Channel, host: boolean): void {
-    const g: Guest = { ch, lastSeen: this.opts.now(), host, player: null };
+    const g: Guest = { ch, lastSeen: this.opts.now(), host, player: null, rejected: false };
     this.guests.push(g);
     ch.onMessage((m) => {
       g.lastSeen = this.opts.now();
@@ -260,14 +261,16 @@ export class HostSession {
   }
 
   private onJoin(g: Guest, m: Extract<Msg, { t: 'join' }>): void {
-    if (g.player) return;
+    if (g.player || g.rejected) return;
     let reason: RejectReason | null = null;
     if (m.v !== PROTOCOL_VERSION) reason = 'version';
     else if (this.phaseValue === 'playing') reason = 'playing';
     else if (this.players().length >= this.cfg.maxPlayers) reason = 'full';
     if (reason) {
+      // Pas de close() ici : sur WebRTC il couperait avant le départ du 'reject'.
+      // L'invité ferme en le recevant ; sinon le délai de silence le retire.
+      g.rejected = true;
       g.ch.sendReliable({ t: 'reject', reason });
-      g.ch.close();
       return;
     }
     const n = this.nextPlayer++;
