@@ -3,15 +3,46 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <title>Snakopouille — spikes</title>
+  <meta name="theme-color" content="#0b0e1f">
+  <title>Snakopouille</title>
+  <link rel="icon" href="data:,">
   <style>
-    body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; background: #0b0e1f; color: #fff; font: 20px sans-serif; }
-    a { display: block; width: 280px; padding: 24px; text-align: center; border-radius: 12px; background: #1b2140; color: #5dff8a; text-decoration: none; font-weight: bold; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color: #e8ebff; font-family: sans-serif;
+      -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
+    #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+    #hud { position: fixed; inset: 0; pointer-events: none; }
+    .hud-top { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); text-align: center; }
+    .hud-clock { font: bold 28px monospace; color: #fff; text-shadow: 0 0 6px #4af0ff; }
+    .hud-clock.fever { color: #ff4af0; text-shadow: 0 0 8px #ff4af0; }
+    .hud-fever { font: bold 14px sans-serif; color: #ff4af0; letter-spacing: 2px; }
+    .hud-panel { position: absolute; top: 8px; min-width: 150px; padding: 8px 10px; border-radius: 8px; background: #ffffff14; font-size: 14px; }
+    .hud-left { left: 8px; }
+    .hud-right { right: 8px; }
+    .hud-title { font-size: 11px; color: #9aa3d0; letter-spacing: 1px; margin-bottom: 4px; }
+    .hud-row { white-space: nowrap; line-height: 1.4; }
+    .hud-row.own { font-weight: bold; }
+    .hud-center { position: absolute; top: 45%; width: 100%; text-align: center; font: bold 32px sans-serif; color: #fff; text-shadow: 0 0 10px #000; }
+    #boost { position: fixed; right: 24px; bottom: 24px; width: 88px; height: 88px; border-radius: 50%;
+      border: 3px solid #ff4af0; background: #ff4af033; color: #ff4af0; font: bold 34px sans-serif; touch-action: none; }
+    #boost:active { background: #ff4af088; }
+    #end { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #000c; }
+    .end-box { background: #0b0e1f; border: 2px solid #4af0ff; border-radius: 16px; padding: 20px 28px; text-align: center; }
+    .end-box h1 { margin: 0 0 12px; color: #4af0ff; }
+    .end-box table { border-collapse: collapse; margin: 0 auto 16px; font-size: 18px; }
+    .end-box th, .end-box td { padding: 6px 12px; }
+    .end-box th { color: #9aa3d0; font-size: 13px; }
+    .end-box button { font: bold 20px sans-serif; padding: 14px 32px; border: 0; border-radius: 12px; background: #5dff8a; color: #0b0e1f; }
+    #portrait { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #0b0e1f; font: bold 28px sans-serif; color: #4af0ff; }
+    #fps { position: fixed; left: 8px; bottom: 8px; font: 12px monospace; color: #5dff8a; background: #000a; padding: 4px 6px; border-radius: 4px; pointer-events: none; }
   </style>
 </head>
 <body>
-  <h1>Snakopouille — spikes</h1>
-  <a href="./spike-network.html">Test réseau</a>
-  <a href="./spike-render.html">Test rendu</a>
+  <canvas id="game"></canvas>
+  <div id="hud"></div>
+  <button id="boost" aria-label="Accélérer">»</button>
+  <div id="fps"></div>
+  <div id="end" style="display:none"></div>
+  <div id="portrait" style="display:none"></div>
+  <script type="module" src="./src/main.ts"></script>
 </body>
 </html>
