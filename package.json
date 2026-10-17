@@ -1,0 +1,24 @@
+{
+  "name": "snakopouille",
+  "version": "1.0.0",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "preview": "vite preview --host"
+  },
+  "dependencies": {
+    "peerjs": "1.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.6",
+    "typescript": "5.6.3",
+    "vite": "5.4.10",
+    "vitest": "2.1.4"
+  },
+  "private": true,
+  "type": "module"
+}
