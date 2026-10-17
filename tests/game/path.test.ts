@@ -74,3 +74,12 @@ test('first long move from a fresh path is sampled every spacing', () => {
   for (let i = 1; i < p.count(); i++) expect(Math.hypot(p.x(i - 1) - p.x(i), p.y(i - 1) - p.y(i))).toBeLessThanOrEqual(4 + 1e-6);
   expect(p.tail()).toEqual({ x: 0, y: 0 });
 });
+
+test('non-finite head positions are ignored', () => {
+  const p = new SnakePath(4, { x: 0, y: 0 });
+  p.moveHead({ x: 10, y: 0 });
+  p.moveHead({ x: NaN, y: 0 });
+  p.moveHead({ x: 20, y: Infinity });
+  expect(p.x(0)).toBe(10);
+  expect(p.length()).toBeCloseTo(10, 6);
+});

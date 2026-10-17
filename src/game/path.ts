@@ -52,6 +52,7 @@ export class SnakePath {
   }
 
   moveHead(p: Vec): void {
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) return; // sinon la boucle ne s'arrête jamais
     if (this.n === 1) {
       // La position de départ devient le premier point fixe ; un grand premier saut
       // (tête distante reçue tard) est échantillonné comme les autres.
