@@ -75,6 +75,7 @@ function newMatch() {
 newMatch();
 
 // ---------- boucle ----------
+const inputs = new Map<string, SnakeInput>(); // réutilisée à chaque pas
 let acc = 0;
 let lastT = performance.now();
 let frames = 0;
@@ -89,7 +90,7 @@ function frame(t: number) {
   const s0 = performance.now();
   while (acc >= SIM_DT && !ended) {
     acc -= SIM_DT;
-    const inputs = new Map<string, SnakeInput>([[OWN_ID, controls.read()]]);
+    inputs.set(OWN_ID, controls.read());
     for (const s of match.snakes) if (s.id !== OWN_ID) inputs.set(s.id, dummyInput(s, match.host.time, dummyRng, cfg.world.width, cfg.world.height));
     const events = match.tick(SIM_DT, inputs);
     if (events.some((e) => e.type === 'end')) {

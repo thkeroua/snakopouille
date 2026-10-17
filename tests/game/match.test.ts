@@ -177,3 +177,19 @@ test('boost drops land at the tail', () => {
   expect(a.points).toBeLessThan(3000);
   for (const d of drops) expect(d.x).toBeLessThan(260);
 });
+
+test('boosted head-on where heads cross in one tick is still head-on', () => {
+  const m = new Match(players(2), QUIET, 12, PALETTE);
+  const [a, b] = m.snakes;
+  // Têtes à 6 unités (pas encore au contact) ; en boost chacune avance de 4 → elles se croisent.
+  place(a, [{ x: 200, y: 500 }, { x: 300, y: 500 }], 0, 12);
+  place(b, [{ x: 406, y: 500 }, { x: 306, y: 500 }], Math.PI, 12);
+  const inputs = new Map<string, SnakeInput>([
+    [a.id, { target: null, boost: true }],
+    [b.id, { target: null, boost: true }],
+  ]);
+  const deaths = m.tick(SIM_DT, inputs).filter((e) => e.type === 'death');
+  expect(deaths).toHaveLength(2);
+  for (const e of deaths) expect(e).toMatchObject({ killer: null, cause: 'head-on' });
+  expect(m.host.stats.get(a.id)!.score + m.host.stats.get(b.id)!.score).toBe(0);
+});

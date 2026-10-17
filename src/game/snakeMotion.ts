@@ -15,6 +15,9 @@ export type SnakeState = {
   angle: number;
   boosting: boolean;
   path: SnakePath;
+  /** Tête au début du dernier pas (collisions tête à tête « balayées »). */
+  prevX: number;
+  prevY: number;
 };
 
 export function createSnake(p: Player, head: Vec, angle: number, cfg: GameplayConfig): SnakeState {
@@ -28,6 +31,8 @@ export function createSnake(p: Player, head: Vec, angle: number, cfg: GameplayCo
     angle,
     boosting: false,
     path: new SnakePath(cfg.snake.sampleSpacing, head),
+    prevX: head.x,
+    prevY: head.y,
   };
 }
 
@@ -40,6 +45,8 @@ export function stepMotion(s: SnakeState, input: SnakeInput, dt: number, cfg: Ga
   const c = cfg.snake;
   const hx = s.path.x(0);
   const hy = s.path.y(0);
+  s.prevX = hx;
+  s.prevY = hy;
 
   if (input.target) {
     const dx = input.target.x - hx;
@@ -56,5 +63,14 @@ export function stepMotion(s: SnakeState, input: SnakeInput, dt: number, cfg: Ga
   const nx = clamp(hx + Math.cos(s.angle) * dist, r, cfg.world.width - r);
   const ny = clamp(hy + Math.sin(s.angle) * dist, r, cfg.world.height - r);
   if (nx !== hx || ny !== hy) s.path.moveHead({ x: nx, y: ny });
+  // Doigt levé et presque bloqué de face contre un mur : on tourne vers la tangente du mur
+  // pour glisser au lieu de rester figé. Avec une cible, c'est le joueur qui décide.
+  if (!input.target && Math.hypot(nx - hx, ny - hy) < dist * 0.5) {
+    const blockedX = nx !== hx + Math.cos(s.angle) * dist;
+    const tangent = blockedX
+      ? Math.sin(s.angle) >= 0 ? Math.PI / 2 : -Math.PI / 2
+      : Math.cos(s.angle) >= 0 ? 0 : Math.PI;
+    s.angle = rotateToward(s.angle, tangent, c.turnRateRad * dt);
+  }
   s.path.trimTo(targetLengthFor(s.points, cfg));
 }

@@ -111,3 +111,16 @@ test('front cone boundary 45°', () => {
   expect(at(44)).toBe(true);
   expect(at(46)).toBe(false);
 });
+
+test('buildBodyGrid reuses pooled BodyRefs across ticks (no per-tick allocation)', () => {
+  const b = snake('B', [{ x: 100, y: 500 }, { x: 400, y: 500 }], 0, 1000);
+  const g = new SpatialGrid<BodyRef>(1600, 1000, 64);
+  const pool: BodyRef[] = [];
+  buildBodyGrid([b], g, GAMEPLAY, pool);
+  const first = pool[0];
+  const size = pool.length;
+  expect(size).toBeGreaterThan(50);
+  buildBodyGrid([b], g, GAMEPLAY, pool);
+  expect(pool.length).toBe(size);
+  expect(pool[0]).toBe(first);
+});

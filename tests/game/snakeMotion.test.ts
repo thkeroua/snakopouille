@@ -94,3 +94,10 @@ test('dead snake does not move', () => {
   run(s, NONE, 10);
   expect(head(s).x).toBe(500);
 });
+
+test('finger lifted heading straight into a wall: turns along it and slides', () => {
+  const s = snakeAt(500, 10, -Math.PI / 2 + 0.01);
+  run(s, NONE, 90);
+  expect(Math.abs(head(s).x - 500)).toBeGreaterThan(50);
+  expect(head(s).y).toBeGreaterThanOrEqual(headRadius(s, GAMEPLAY) - 1e-9);
+});

@@ -53,6 +53,7 @@ export function leaderId(snakes: readonly SnakeState[]): SnakeId | null {
 
 export class HostRules {
   private readonly bodyGrid: SpatialGrid<BodyRef>;
+  private readonly bodyPool: BodyRef[] = [];
 
   constructor(
     readonly state: HostState,
@@ -81,6 +82,8 @@ export class HostRules {
       s.angle = angle;
       s.boosting = false;
       s.path.reset(pos);
+      s.prevX = pos.x;
+      s.prevY = pos.y;
       this.state.boostAcc.set(s.id, newBoostAcc());
       events.push({ type: 'respawn', snake: s.id });
     }
@@ -107,7 +110,7 @@ export class HostRules {
     for (const c of headClashes(snakes, this.cfg)) {
       for (const d of resolveClash(c)) if (!found.has(d.victim)) found.set(d.victim, d);
     }
-    const maxHalf = buildBodyGrid(snakes, this.bodyGrid, this.cfg);
+    const maxHalf = buildBodyGrid(snakes, this.bodyGrid, this.cfg, this.bodyPool);
     for (const s of snakes) {
       if (!s.alive || found.has(s.id)) continue;
       const owner = headHitsBody(s, this.bodyGrid, maxHalf, this.cfg);
