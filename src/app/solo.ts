@@ -45,6 +45,7 @@ export function startSolo(shell: GameShell, params: URLSearchParams, name: strin
     shell.hud.update(match, OWN_ID, true);
   }
   newMatch();
+  shell.setExit(exit);
 
   const inputs = new Map<string, SnakeInput>(); // réutilisée à chaque pas
   let acc = 0;

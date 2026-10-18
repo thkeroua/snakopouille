@@ -1,16 +1,22 @@
 import type { GameplayConfig } from '../config/gameplay';
 import { angleDiff } from './math';
-import { widthFor } from './sizing';
-import { headRadius, type SnakeState } from './snakeMotion';
+import { forEachSpike } from './bonus';
+import { headRadius, snakeWidth, type SnakeState } from './snakeMotion';
 import type { SpatialGrid } from './spatialGrid';
 import type { DeathCause, SnakeId } from './types';
 
-/** `arc` = abscisse curviligne depuis la tête de son serpent. */
+const SPIKE_STEP = 3; // espacement des points de collision le long d'un pic
+const MAX_SPIKE_REFS = 6; // par pic, même sur un très gros serpent
+const MIN_SPIKE_HALF = 1;
+
+/** `arc` = abscisse curviligne depuis la tête de son serpent ; `i` = -1 pour un pic. */
 export type BodyRef = { snake: SnakeId; i: number; halfWidth: number; x: number; y: number; arc: number };
 
 /**
  * Tous les échantillons des serpents vivants, SAUF leur zone de tête (abscisse depuis
  * la tête < demi-épaisseur) : la tête relève des collisions tête contre tête.
+ * Un serpent fantôme n'a pas de corps ici (personne ne meurt dessus) ; un serpent à pics y
+ * ajoute ses pics, échantillonnés de la base à la pointe.
  * Renvoie la plus grande demi-épaisseur insérée (rayon de recherche).
  * `pool` est réutilisé d'un pas à l'autre : aucune allocation par échantillon (GC sur la K10).
  */
@@ -23,40 +29,55 @@ export function buildBodyGrid(
   grid.clear();
   let maxHalf = 0;
   let used = 0;
+  const push = (snake: SnakeId, i: number, halfWidth: number, x: number, y: number, arc: number) => {
+    let ref = pool[used];
+    if (!ref) ref = pool[used] = { snake, i, halfWidth, x: 0, y: 0, arc: 0 };
+    used++;
+    ref.snake = snake;
+    ref.i = i;
+    ref.halfWidth = halfWidth;
+    ref.x = x;
+    ref.y = y;
+    ref.arc = arc;
+    grid.insert(x, y, ref);
+  };
   for (const s of snakes) {
-    if (!s.alive) continue;
-    const halfWidth = widthFor(s.points, cfg) / 2;
+    if (!s.alive || s.bonus.ghost > 0) continue;
+    const halfWidth = snakeWidth(s, cfg) / 2;
     if (halfWidth > maxHalf) maxHalf = halfWidth;
     const p = s.path;
     let arc = 0;
     for (let i = 1; i < p.count(); i++) {
       arc += Math.hypot(p.x(i) - p.x(i - 1), p.y(i) - p.y(i - 1));
       if (arc < halfWidth) continue;
-      let ref = pool[used];
-      if (!ref) ref = pool[used] = { snake: s.id, i, halfWidth, x: 0, y: 0, arc: 0 };
-      used++;
-      ref.snake = s.id;
-      ref.i = i;
-      ref.halfWidth = halfWidth;
-      ref.x = p.x(i);
-      ref.y = p.y(i);
-      ref.arc = arc;
-      grid.insert(ref.x, ref.y, ref);
+      push(s.id, i, halfWidth, p.x(i), p.y(i), arc);
+    }
+    if (s.bonus.spikes > 0) {
+      forEachSpike(s, cfg, (ax, ay, tx, ty, _ux, _uy, base, sArc) => {
+        const len = Math.hypot(tx - ax, ty - ay);
+        const n = Math.max(1, Math.ceil(len / Math.max(SPIKE_STEP, len / MAX_SPIKE_REFS)));
+        for (let k = 1; k <= n; k++) {
+          const t = k / n;
+          push(s.id, -1, Math.max(MIN_SPIKE_HALF, base * (1 - t)), ax + (tx - ax) * t, ay + (ty - ay) * t, sArc);
+        }
+      });
     }
   }
   return maxHalf;
 }
 
 /**
- * Marge du « cou » côté client : ce qu'une tête peut parcourir en deux envois réseau en boost.
+ * Marge du « cou » côté client : ce qu'une tête peut parcourir en deux envois réseau à pleine
+ * vitesse (accélérateur + bonus vitesse).
  * Le cou d'un autre serpent relève des têtes à tête, arbitrées par l'hôte (decisions.md).
  */
 export function neckExtra(cfg: GameplayConfig): number {
-  return (2 * cfg.snake.speed * cfg.snake.boostMultiplier) / cfg.net.sendHz;
+  return (2 * cfg.snake.speed * cfg.snake.boostMultiplier * cfg.bonus.speed.multiplier) / cfg.net.sendHz;
 }
 
 /**
- * Tête de `s` contre le corps des AUTRES serpents : id du propriétaire touché, ou null.
+ * Tête de `s` contre le corps des AUTRES serpents : id du propriétaire touché, ou null
+ * (toujours null pour un fantôme).
  * Avec `neckExtra`, le cou de l'autre (arc < sa demi-épaisseur + rayon de `s` + neckExtra) est ignoré.
  */
 export function headHitsBody(
@@ -66,6 +87,7 @@ export function headHitsBody(
   cfg: GameplayConfig,
   neckExtra?: number,
 ): SnakeId | null {
+  if (s.bonus.ghost > 0) return null;
   const hx = s.path.x(0);
   const hy = s.path.y(0);
   const r = headRadius(s, cfg);

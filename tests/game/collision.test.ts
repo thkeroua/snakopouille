@@ -126,7 +126,7 @@ test('buildBodyGrid reuses pooled BodyRefs across ticks (no per-tick allocation)
   expect(pool[0]).toBe(first);
 });
 
-test('neckExtra = 2 × boosted speed / sendHz', () => expect(neckExtra(GAMEPLAY)).toBe(24));
+test('neckExtra = 2 × top speed (boost + speed bonus) / sendHz', () => expect(neckExtra(GAMEPLAY)).toBe(48));
 
 test('client-side check ignores the other snake neck', () => {
   const b = snake('B', [{ x: 100, y: 500 }, { x: 400, y: 500 }], 0, 1000);

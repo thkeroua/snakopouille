@@ -9,6 +9,14 @@ export const RENDER = {
   gridCell: 24,
   playerColors: ['#5dff8a', '#ff4a6e', '#4af0ff', '#ffd84a', '#ff4af0', '#ff9a3d', '#9a7bff', '#f5f5f5'],
   foodColors: ['#ffd84a', '#4af0ff', '#ff4af0', '#5dff8a'],
+  /** Super points : cœur blanc + anneau doré qui pulse. */
+  superFoodColor: '#ffffff',
+  superRingColor: '#ffd84a',
+  superPulseHz: 1.5,
+  /** Bonus : icône (emoji) et couleur de l'anneau, sur la map et dans le HUD. */
+  bonusIcons: { speed: '⚡', ghost: '👻', obese: '🍔', spikes: '🦔' },
+  bonusColors: { speed: '#ffd84a', ghost: '#c9d4ff', obese: '#ff9a3d', spikes: '#ff4a6e' },
+  ghostAlpha: 0.3,
   glowWidthFactor: 1.8,
   glowAlpha: 0.25,
   crownColor: '#ffd84a',

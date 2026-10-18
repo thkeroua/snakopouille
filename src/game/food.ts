@@ -4,7 +4,7 @@ import type { Rng } from './rng';
 import { foodRadius } from './sizing';
 import { SpatialGrid } from './spatialGrid';
 
-export type Food = { id: number; x: number; y: number; value: number; r: number; color: string; natural: boolean };
+export type Food = { id: number; x: number; y: number; value: number; r: number; color: string; natural: boolean; isSuper: boolean };
 
 const CELL = 64;
 
@@ -13,6 +13,7 @@ export class FoodStore {
   private readonly grid: SpatialGrid<Food>;
   private nextId = 1;
   private natural = 0;
+  private superCount = 0;
   private maxR = 0;
   /** Journal des ajouts/retraits pour la synchro réseau (hôte). */
   trackChanges = false;
@@ -35,14 +36,14 @@ export class FoodStore {
     return this.natural;
   }
 
-  add(x: number, y: number, value: number, natural: boolean): Food {
-    return this.put(this.nextId++, x, y, value, natural);
+  add(x: number, y: number, value: number, natural: boolean, isSuper = false): Food {
+    return this.put(this.nextId++, x, y, value, natural, isSuper);
   }
 
   /** Miroir client : nourriture reçue de l'hôte, avec son id. */
-  insert(id: number, x: number, y: number, value: number): Food {
+  insert(id: number, x: number, y: number, value: number, isSuper = false): Food {
     this.nextId = Math.max(this.nextId, id + 1);
-    return this.put(id, x, y, value, false);
+    return this.put(id, x, y, value, false, isSuper);
   }
 
   remove(id: number): void {
@@ -51,6 +52,7 @@ export class FoodStore {
     this.map.delete(id);
     this.grid.remove(f.x, f.y, f);
     if (f.natural) this.natural--;
+    if (f.isSuper) this.superCount--;
     if (this.trackChanges && !this.added.delete(id)) this.removed.push(id);
   }
 
@@ -62,14 +64,15 @@ export class FoodStore {
     return out;
   }
 
-  private put(id: number, x: number, y: number, value: number, natural: boolean): Food {
+  private put(id: number, x: number, y: number, value: number, natural: boolean, isSuper: boolean): Food {
     const r = foodRadius(value, this.cfg);
     // Couleur déduite de l'id : identique sur tous les appareils sans la transmettre.
     const color = this.palette[id % this.palette.length];
-    const f: Food = { id, x, y, value, r, color, natural };
+    const f: Food = { id, x, y, value, r, color, natural, isSuper };
     this.map.set(f.id, f);
     this.grid.insert(x, y, f);
     if (natural) this.natural++;
+    if (isSuper) this.superCount++;
     if (r > this.maxR) this.maxR = r;
     if (this.trackChanges) this.added.set(id, f);
     return f;
@@ -81,6 +84,16 @@ export class FoodStore {
     const { width, height } = this.cfg.world;
     const value = this.rng.pickWeighted(this.cfg.food.values).value * multiplier;
     return this.add(this.rng.range(m, width - m), this.rng.range(m, height - m), value, true);
+  }
+
+  /** Super point au hasard sur la map (table fièvre en fièvre, sans multiplicateur). */
+  spawnSuper(fever: boolean): Food | null {
+    const sup = this.cfg.food.super;
+    if (this.superCount >= sup.maxOnMap) return null;
+    const m = this.cfg.food.spawnMargin;
+    const { width, height } = this.cfg.world;
+    const value = this.rng.pickWeighted(fever ? sup.feverValues : sup.values).value;
+    return this.add(this.rng.range(m, width - m), this.rng.range(m, height - m), value, false, true);
   }
 
   /** Ids de nourriture touchée par le cercle (x, y, r). */

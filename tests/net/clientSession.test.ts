@@ -65,7 +65,7 @@ test('reject closes with the reason', () => {
 
 test('start builds snakes and food; own snake moves locally with input', () => {
   const { c, start, tick, changes } = setup();
-  start([[7, 900, 900, 10]]);
+  start([[7, 900, 900, 10, 0]]);
   expect(c.phase).toBe('playing');
   expect(changes.at(-1)).toBe('start');
   expect(c.snakes.map((s) => [s.id, s.name, s.color])).toEqual([
@@ -95,7 +95,7 @@ test('sends me at sendHz only while alive', () => {
 
 test('touching food hides it and sends a single eat; del confirms and unhides', () => {
   const { c, sent, send, start, tick } = setup();
-  start([[1, 500, 495, 10]]);
+  start([[1, 500, 495, 10, 0]]);
   tick(3);
   expect(c.hiddenFood.has(1)).toBe(true);
   expect(sent.filter((m) => m.t === 'eat')).toEqual([{ t: 'eat', life: 1, ids: [1] }]);
@@ -219,7 +219,7 @@ test('leave says bye and closes without a reason', () => {
 test('end stores the ranking and a new start resets everything', () => {
   const cfg = withConfig(GAMEPLAY, { match: { durationS: 20 } });
   const { c, send, start, tick, changes } = setup(cfg);
-  start([[1, 500, 495, 10]], 20);
+  start([[1, 500, 495, 10, 0]], 20);
   tick(2);
   expect(c.cfg.match.durationS).toBe(20);
   send({
@@ -240,7 +240,7 @@ test('end stores the ranking and a new start resets everything', () => {
 
 test('an eat the host ignored (sent just before a host-side death) does not hide the food after respawn', () => {
   const { c, send, start, tick } = setup();
-  start([[1, 500, 495, 10]]);
+  start([[1, 500, 495, 10, 0]]);
   tick(2); // 'eat' envoyé ; l'hôte l'ignore car il vient de tuer ce serpent (tête à tête)
   expect(c.hiddenFood.has(1)).toBe(true);
   send({ t: 'death', victim: 'p1', killer: null, cause: 'head-on', respawnAt: 5 });
@@ -250,7 +250,7 @@ test('an eat the host ignored (sent just before a host-side death) does not hide
 });
 
 test('eat requests are capped like on the host and only sent ids are hidden', () => {
-  const food: FoodWire[] = Array.from({ length: 80 }, (_, i) => [i + 1, 500, 497, 5]);
+  const food: FoodWire[] = Array.from({ length: 80 }, (_, i) => [i + 1, 500, 497, 5, 0]);
   const { c, sent, start, tick } = setup();
   start(food);
   tick();
@@ -260,4 +260,29 @@ test('eat requests are capped like on the host and only sent ids are hidden', ()
   tick();
   expect(sent.filter((m) => m.t === 'eat')).toHaveLength(2);
   expect(c.hiddenFood.size).toBe(80);
+});
+
+test('food beside the head is requested thanks to the magnet; super flag is mirrored', () => {
+  const { c, sent, send, start, tick } = setup();
+  start([[3, 514, 500, 5, 0]]);
+  send({ t: 'food', add: [[4, 1200, 800, 500, 1]], del: [] });
+  expect(c.food.get(4)!.isSuper).toBe(true);
+  expect(c.food.get(3)!.isSuper).toBe(false);
+  tick();
+  const eat = sent.find((m) => m.t === 'eat') as Extract<Msg, { t: 'eat' }>;
+  expect(eat.ids).toEqual([3]);
+});
+
+test('pickups and bonuses are mirrored; a death clears the bonuses', () => {
+  const { c, send, start, tick } = setup();
+  start();
+  send({ t: 'pickup', p: [9, 800, 600, 'obese'] });
+  expect(c.pickups.get(9)).toEqual({ id: 9, x: 800, y: 600, kind: 'obese' });
+  send({ t: 'bonus', snake: 'p2', kind: 'obese', left: 10, pickup: 9 });
+  expect(c.pickups.size).toBe(0);
+  expect(other(c).bonus.obese).toBe(10);
+  tick(60);
+  expect(other(c).bonus.obese).toBeCloseTo(9, 1);
+  send({ t: 'death', victim: 'p2', killer: null, cause: 'head-on', respawnAt: 5 });
+  expect(other(c).bonus.obese).toBe(0);
 });

@@ -1,13 +1,15 @@
 // Messages échangés entre l'hôte et les invités (JSON). Voie rapide = canal non fiable.
+import type { BonusKind } from '../game/bonus';
 import type { RankingRow } from '../game/ranking';
 import type { DeathCause, SnakeId } from '../game/types';
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 3;
 /** Nourriture demandée en un seul 'eat' (quelques unités en pratique). */
 export const MAX_EAT_IDS = 64;
 export type ColorIndex = number; // indice dans RENDER.playerColors
 export type LobbyPlayer = { id: SnakeId; name: string; color: ColorIndex; host: boolean };
-export type FoodWire = [id: number, x: number, y: number, value: number];
+export type FoodWire = [id: number, x: number, y: number, value: number, isSuper: 0 | 1];
+export type PickupWire = [id: number, x: number, y: number, kind: BonusKind];
 export type SpawnWire = [id: SnakeId, life: number, x: number, y: number, angle: number];
 export type HeadWire = [id: SnakeId, life: number, ts: number, x: number, y: number, angle: number, boost: 0 | 1, points: number];
 export type StatsWire = [id: SnakeId, score: number, deaths: number, maxPoints: number];
@@ -31,6 +33,8 @@ export type Msg =
   | { t: 'start'; durationS: number; players: LobbyPlayer[]; spawns: SpawnWire[]; food: FoodWire[] }
   | { t: 'heads'; time: number; s: HeadWire[] } // voie rapide ; time = chrono de partie (s)
   | { t: 'food'; add: FoodWire[]; del: number[] }
+  | { t: 'pickup'; p: PickupWire } // nouveau bonus sur la map
+  | { t: 'bonus'; snake: SnakeId; kind: BonusKind; left: number; pickup: number } // bonus pris (left en s)
   | { t: 'death'; victim: SnakeId; killer: SnakeId | null; cause: DeathCause; respawnAt: number }
   | { t: 'respawn'; spawn: SpawnWire }
   | { t: 'stats'; rows: StatsWire[] }

@@ -72,3 +72,25 @@ test('eatRequest credits only present food and ignores dead snakes', () => {
   rules.eatRequest(a, [g.id], ev);
   expect(host.food.items.has(g.id)).toBe(true);
 });
+
+test('super food appears from time to time, at most maxOnMap', () => {
+  const { host, rules } = setup();
+  const sup = () => [...host.food.items.values()].filter((f) => f.isSuper);
+  for (let t = 0; t < CFG.food.super.intervalMaxS; t += 0.05) rules.spawnFood(0.05);
+  expect(sup().length).toBeGreaterThanOrEqual(1);
+  for (let t = 0; t < 10 * CFG.food.super.intervalMaxS; t += 0.05) rules.spawnFood(0.05);
+  expect(sup()).toHaveLength(CFG.food.super.maxOnMap);
+  for (const f of sup()) expect(CFG.food.super.values.map((v) => v.value)).toContain(f.value);
+});
+
+test('magnet: food just beside the head is eaten without touching it', () => {
+  const { a, host, rules } = setup();
+  const hx = a.path.x(0);
+  const hy = a.path.y(0);
+  const f = host.food.add(hx + 12, hy, 5, false); // r ≈ 3.8 : hors du rayon de tête seul
+  const far = host.food.add(hx + 40, hy, 5, false);
+  const ev: MatchEvent[] = [];
+  rules.eat([a], ev);
+  expect(ev).toEqual([{ type: 'eat', snake: 'A', foodId: f.id, value: 5 }]);
+  expect(host.food.items.has(far.id)).toBe(true);
+});

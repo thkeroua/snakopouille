@@ -6,11 +6,15 @@ import { screenToWorld, type Viewport } from '../view/viewport';
  * Le premier pointeur posé sur le canvas pilote jusqu'à ce qu'il se lève ; la tête vise
  * sa position courante. Le bouton accélérateur (et Espace, et le clic droit) accélère ;
  * ses pointeurs ne pilotent jamais.
+ * iOS Safari ignore en partie `touch-action` : un second doigt y lance un geste système
+ * (pincement, loupe) qui annule les pointeurs. On bloque donc les gestes à la main et le
+ * bouton suit aussi les `touch*`, qui restent fiables quand un pointeur est annulé.
  */
 export class Controls {
   private steerId: number | null = null;
   private target: Vec | null = null;
   private boostPointers = new Set<number>();
+  private boostTouches = new Set<number>();
   private keyBoost = false;
   private rightBoost = false;
   private readonly off: (() => void)[] = [];
@@ -38,6 +42,20 @@ export class Controls {
     this.on(boostButton, 'pointerup', releaseBoost);
     this.on(boostButton, 'pointercancel', releaseBoost);
     this.on(boostButton, 'contextmenu', (e) => e.preventDefault());
+    this.on(boostButton, 'touchstart', (e) => {
+      e.preventDefault();
+      for (const t of (e as TouchEvent).changedTouches) this.boostTouches.add(t.identifier);
+    });
+    const releaseTouch = (e: Event) => {
+      for (const t of (e as TouchEvent).changedTouches) this.boostTouches.delete(t.identifier);
+    };
+    this.on(boostButton, 'touchend', releaseTouch);
+    this.on(boostButton, 'touchcancel', releaseTouch);
+    const noGesture = (e: Event) => e.preventDefault();
+    this.on(canvas, 'touchstart', noGesture);
+    this.on(canvas, 'touchmove', noGesture);
+    this.on(boostButton, 'touchmove', noGesture);
+    this.on(document, 'gesturestart', noGesture); // pincement iOS
     this.on(window, 'keydown', (e) => {
       if ((e as KeyboardEvent).code === 'Space') {
         e.preventDefault();
@@ -50,12 +68,16 @@ export class Controls {
     this.on(window, 'blur', () => {
       this.keyBoost = this.rightBoost = false;
       this.boostPointers.clear();
+      this.boostTouches.clear();
       this.release();
     });
   }
 
   read(): SnakeInput {
-    return { target: this.target, boost: this.keyBoost || this.rightBoost || this.boostPointers.size > 0 };
+    return {
+      target: this.target,
+      boost: this.keyBoost || this.rightBoost || this.boostPointers.size > 0 || this.boostTouches.size > 0,
+    };
   }
 
   dispose(): void {

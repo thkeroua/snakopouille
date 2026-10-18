@@ -1,12 +1,13 @@
 // Logique d'un joueur : son serpent bouge ici (réactivité), le reste vient de l'hôte.
 import { withConfig, type GameplayConfig } from '../config/gameplay';
+import { clearBonus, isBonusKind, PickupStore, tickBonus, type Pickup } from '../game/bonus';
 import { buildBodyGrid, headHitsBody, neckExtra, type BodyRef } from '../game/collision';
 import { FoodStore, type Food } from '../game/food';
 import type { PlayerStats } from '../game/hostRules';
 import { buildRanking, type RankingRow } from '../game/ranking';
 import { applyHead } from '../game/remote';
 import { Rng } from '../game/rng';
-import { createSnake, headRadius, stepMotion, type SnakeState } from '../game/snakeMotion';
+import { createSnake, eatRadius, stepMotion, type SnakeState } from '../game/snakeMotion';
 import { SpatialGrid } from '../game/spatialGrid';
 import type { SnakeId, SnakeInput } from '../game/types';
 import type { GameView } from '../game/view';
@@ -32,6 +33,7 @@ export class ClientSession implements GameView {
   cfg: GameplayConfig;
   snakes: SnakeState[] = [];
   private foodStore: FoodStore;
+  private pickupStore = new PickupStore();
   private readonly hidden = new Set<number>();
   private stats = new Map<SnakeId, PlayerStats>();
   private life = new Map<SnakeId, number>();
@@ -70,6 +72,9 @@ export class ClientSession implements GameView {
   }
   get hiddenFood(): ReadonlySet<number> {
     return this.hidden;
+  }
+  get pickups(): ReadonlyMap<number, Pickup> {
+    return this.pickupStore.items;
   }
   get time(): number {
     return this.timeValue;
@@ -110,6 +115,8 @@ export class ClientSession implements GameView {
     const now = this.opts.now();
     const cfg = this.cfg;
     this.timeValue = Math.min(cfg.match.durationS, Math.max(this.timeValue, this.hostTime + (now - this.hostTimeAt) / 1000));
+
+    for (const s of this.snakes) if (s.alive) tickBonus(s, dt);
 
     const own = this.own;
     if (own && own.alive) {
@@ -178,17 +185,29 @@ export class ClientSession implements GameView {
         this.onHeads(m);
         break;
       case 'food':
-        for (const [id, x, y, value] of m.add) this.foodStore.insert(id, x, y, value);
+        for (const [id, x, y, value, sup] of m.add) this.foodStore.insert(id, x, y, value, sup === 1);
         for (const id of m.del) {
           this.foodStore.remove(id);
           this.hidden.delete(id);
         }
         break;
+      case 'pickup': {
+        const [id, x, y, kind] = m.p;
+        if (isBonusKind(kind)) this.pickupStore.insert(id, x, y, kind);
+        break;
+      }
+      case 'bonus': {
+        this.pickupStore.remove(m.pickup);
+        const s = this.byId(m.snake);
+        if (s && isBonusKind(m.kind)) s.bonus[m.kind] = m.left;
+        break;
+      }
       case 'death': {
         const s = this.byId(m.victim);
         if (s) {
           s.alive = false;
           s.boosting = false;
+          clearBonus(s);
           s.respawnAt = m.respawnAt;
         }
         break;
@@ -205,6 +224,7 @@ export class ClientSession implements GameView {
         s.points = this.cfg.snake.startPoints;
         s.alive = true;
         s.boosting = false;
+        clearBonus(s);
         s.respawnAt = 0;
         this.buffers.get(id)?.clear();
         if (s === this.own) {
@@ -247,8 +267,9 @@ export class ClientSession implements GameView {
     const cfg = withConfig(this.baseCfg, { match: { durationS: m.durationS } });
     this.cfg = cfg;
     this.foodStore = new FoodStore(cfg, new Rng(1), this.opts.foodPalette);
-    for (const [id, x, y, value] of m.food) this.foodStore.insert(id, x, y, value);
+    for (const [id, x, y, value, sup] of m.food) this.foodStore.insert(id, x, y, value, sup === 1);
     this.hidden.clear();
+    this.pickupStore = new PickupStore();
     this.stats = new Map();
     this.life = new Map();
     this.buffers = new Map();
@@ -289,7 +310,7 @@ export class ClientSession implements GameView {
 
   private requestFood(own: SnakeState): void {
     const ids = this.foodStore
-      .touching(own.path.x(0), own.path.y(0), headRadius(own, this.cfg))
+      .touching(own.path.x(0), own.path.y(0), eatRadius(own, this.cfg))
       .filter((id) => !this.hidden.has(id))
       .slice(0, MAX_EAT_IDS); // l'hôte ignore le reste : on ne cache que ce qui est demandé
     if (ids.length === 0) return;

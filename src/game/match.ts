@@ -1,5 +1,6 @@
 // Orchestration locale : en solo, la même machine joue le client (snakeMotion) et l'hôte (hostRules).
 import type { GameplayConfig } from '../config/gameplay';
+import type { Pickup } from './bonus';
 import type { Food } from './food';
 import { HostRules, createHost, type HostState } from './hostRules';
 import { buildRanking, type RankingRow } from './ranking';
@@ -42,6 +43,7 @@ export class Match implements GameView {
     const events: MatchEvent[] = [];
     this.rules.clock(dt, events);
     this.rules.respawns(this.snakes, events);
+    this.rules.tickBonuses(this.snakes, dt);
     for (const s of this.snakes) {
       const input = inputs.get(s.id) ?? NO_INPUT;
       this.rules.boost(s, input, dt);
@@ -49,13 +51,18 @@ export class Match implements GameView {
     }
     this.rules.deaths(this.snakes, events);
     this.rules.eat(this.snakes, events);
+    this.rules.takePickups(this.snakes, events);
     this.rules.spawnFood(dt);
+    this.rules.spawnPickup(dt);
     this.rules.finish(this.snakes, events);
     return events;
   }
 
   get food(): ReadonlyMap<number, Food> {
     return this.host.food.items;
+  }
+  get pickups(): ReadonlyMap<number, Pickup> {
+    return this.host.pickups.items;
   }
   get hiddenFood(): ReadonlySet<number> {
     return NO_HIDDEN;

@@ -135,6 +135,7 @@ function enterOnline(ch: Channel, p: Prefs, h: HostSession | null, destroyNet: (
       hideScreen(lobbyRoot);
       shell.hideEnd();
       o.stopLoop ??= runOnline(shell, session, h);
+      shell.setExit(() => leaveOnline(), h ? "Tu es l'hôte : la partie s'arrêtera pour tout le monde." : undefined);
     } else if (what === 'end') showOnlineEnd(o);
     else if (what === 'closed') onClosed(o);
   };

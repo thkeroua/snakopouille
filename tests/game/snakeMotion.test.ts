@@ -28,7 +28,7 @@ test('goes straight without input', () => {
 test('turn is rate-limited', () => {
   const s = snakeAt(500, 500, 0);
   run(s, { target: { x: 300, y: 500.001 }, boost: false }, 1);
-  expect(Math.abs(s.angle)).toBeCloseTo(4 / 60, 5);
+  expect(Math.abs(s.angle)).toBeCloseTo(GAMEPLAY.snake.turnRateRad / 60, 5);
 });
 
 test('steers toward target over time', () => {

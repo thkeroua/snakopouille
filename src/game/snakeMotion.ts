@@ -1,5 +1,6 @@
 // Mouvement de SON serpent : code « client » au plan 3. N'écrit jamais `points`.
 import type { GameplayConfig } from '../config/gameplay';
+import { noBonus, type BonusTimers } from './bonus';
 import { clamp, rotateToward } from './math';
 import { SnakePath } from './path';
 import { targetLengthFor, widthFor } from './sizing';
@@ -18,6 +19,8 @@ export type SnakeState = {
   /** Tête au début du dernier pas (collisions tête à tête « balayées »). */
   prevX: number;
   prevY: number;
+  /** Secondes restantes de chaque bonus (0 : inactif). */
+  bonus: BonusTimers;
 };
 
 export function createSnake(p: Player, head: Vec, angle: number, cfg: GameplayConfig): SnakeState {
@@ -33,11 +36,23 @@ export function createSnake(p: Player, head: Vec, angle: number, cfg: GameplayCo
     path: new SnakePath(cfg.snake.sampleSpacing, head),
     prevX: head.x,
     prevY: head.y,
+    bonus: noBonus(),
   };
 }
 
+/** Épaisseur réelle : celle des points, ×widthFactor en mode obèse (la longueur ne change pas). */
+export function snakeWidth(s: SnakeState, cfg: GameplayConfig): number {
+  const w = widthFor(s.points, cfg);
+  return s.bonus.obese > 0 ? w * cfg.bonus.obese.widthFactor : w;
+}
+
 export function headRadius(s: SnakeState, cfg: GameplayConfig): number {
-  return widthFor(s.points, cfg) / 2;
+  return snakeWidth(s, cfg) / 2;
+}
+
+/** Portée de la bouche : rayon de tête + « champ magnétique ». */
+export function eatRadius(s: SnakeState, cfg: GameplayConfig): number {
+  return headRadius(s, cfg) + cfg.snake.magnetRange;
 }
 
 export function stepMotion(s: SnakeState, input: SnakeInput, dt: number, cfg: GameplayConfig): void {
@@ -57,7 +72,9 @@ export function stepMotion(s: SnakeState, input: SnakeInput, dt: number, cfg: Ga
   }
 
   s.boosting = input.boost && s.points > c.minPoints;
-  const dist = c.speed * (s.boosting ? c.boostMultiplier : 1) * dt;
+  // Bonus vitesse : ×multiplier, cumulable avec l'accélérateur.
+  const bonusSpeed = s.bonus.speed > 0 ? cfg.bonus.speed.multiplier : 1;
+  const dist = c.speed * (s.boosting ? c.boostMultiplier : 1) * bonusSpeed * dt;
   // Bords : la tête est contrainte dans le monde, le cap est conservé → glissement.
   const r = headRadius(s, cfg);
   const nx = clamp(hx + Math.cos(s.angle) * dist, r, cfg.world.width - r);

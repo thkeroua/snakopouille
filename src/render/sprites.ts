@@ -2,6 +2,34 @@ import { RENDER } from '../config/render';
 import type { Viewport } from '../view/viewport';
 
 const foodCache = new Map<string, HTMLCanvasElement>();
+const bonusCache = new Map<string, HTMLCanvasElement>();
+
+/** Icône de bonus pré-rendue : disque sombre, anneau coloré, emoji au centre. */
+export function bonusSprite(icon: string, color: string, radiusPx: number): HTMLCanvasElement {
+  const r = Math.max(4, Math.round(radiusPx));
+  const key = `${icon}|${r}`;
+  let s = bonusCache.get(key);
+  if (!s) {
+    const size = r * 2 + 4;
+    s = document.createElement('canvas');
+    s.width = s.height = size;
+    const g = s.getContext('2d')!;
+    const c = size / 2;
+    g.beginPath();
+    g.arc(c, c, r, 0, Math.PI * 2);
+    g.fillStyle = '#0b0e1fdd';
+    g.fill();
+    g.lineWidth = Math.max(2, r * 0.14);
+    g.strokeStyle = color;
+    g.stroke();
+    g.font = `${Math.round(r * 1.1)}px sans-serif`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(icon, c, c + r * 0.06);
+    bonusCache.set(key, s);
+  }
+  return s;
+}
 
 /** Halo de nourriture pré-rendu : cœur plein puis dégradé vers la transparence (3× le rayon). */
 export function foodSprite(color: string, radiusPx: number): HTMLCanvasElement {

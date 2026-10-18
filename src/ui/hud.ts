@@ -1,3 +1,5 @@
+import { RENDER } from '../config/render';
+import { BONUS_KINDS, type BonusKind } from '../game/bonus';
 import { leaderId } from '../game/hostRules';
 import type { RankingRow } from '../game/ranking';
 import type { SnakeId } from '../game/types';
@@ -24,6 +26,7 @@ export class Hud {
   private readonly points: HTMLDivElement;
   private readonly score: HTMLDivElement;
   private readonly center: HTMLDivElement;
+  private readonly bonus = new Map<BonusKind, { chip: HTMLDivElement; secs: HTMLSpanElement; bar: HTMLDivElement }>();
   private last = -Infinity;
 
   constructor(root: HTMLElement) {
@@ -34,6 +37,17 @@ export class Hud {
     this.points = el('div', 'hud-panel hud-left', root);
     this.score = el('div', 'hud-panel hud-right', root);
     this.center = el('div', 'hud-center', root);
+    const bonusRow = el('div', 'hud-bonus', root);
+    for (const k of BONUS_KINDS) {
+      const chip = el('div', 'hud-chip', bonusRow);
+      chip.style.borderColor = RENDER.bonusColors[k];
+      chip.style.display = 'none';
+      el('span', 'hud-chip-icon', chip).textContent = RENDER.bonusIcons[k];
+      const secs = el('span', 'hud-chip-secs', chip);
+      const bar = el('div', 'hud-chip-bar', chip);
+      bar.style.background = RENDER.bonusColors[k];
+      this.bonus.set(k, { chip, secs, bar });
+    }
   }
 
   update(view: GameView, ownId: SnakeId, force = false): void {
@@ -51,6 +65,14 @@ export class Hud {
     this.fill(this.score, 'SCORE', rows, ownId, (r) => r.score, null);
 
     const own = view.snakes.find((s) => s.id === ownId);
+    // Minuteurs des bonus actifs : barre qui se vide (transition CSS entre deux mises à jour).
+    for (const [k, ui] of this.bonus) {
+      const left = own && own.alive ? own.bonus[k] : 0;
+      ui.chip.style.display = left > 0 ? '' : 'none';
+      if (left <= 0) continue;
+      ui.secs.textContent = `${Math.ceil(left)} s`;
+      ui.bar.style.width = `${Math.min(100, (100 * left) / view.cfg.bonus[k].durationS)}%`;
+    }
     if (own && !own.alive && !view.ended && Number.isFinite(own.respawnAt)) {
       this.center.style.display = '';
       this.center.textContent = `Réapparition dans ${Math.max(1, Math.ceil(own.respawnAt - view.time))} s`;

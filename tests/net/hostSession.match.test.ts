@@ -222,3 +222,16 @@ test('join during a match is rejected with playing', () => {
   expect(got).toEqual([{ t: 'reject', reason: 'playing' }]);
   expect(host.probeInfo().playing).toBe(true);
 });
+
+test('pickups are broadcast, and the snake whose head reaches one gets the bonus', () => {
+  const { host, peers, tick } = setup();
+  host.start();
+  for (let i = 0; i < 60 * 3 * QUIET.bonus.intervalMaxS && !peers[0].last('pickup'); i++) tick();
+  const [id, x, y, kind] = peers[0].last('pickup')!.p;
+  expect(peers[2].last('pickup')!.p).toEqual([id, x, y, kind]);
+  peers[1].me(x, y);
+  tick();
+  for (const p of peers) {
+    expect(p.last('bonus')).toEqual({ t: 'bonus', snake: peers[1].id, kind, left: QUIET.bonus[kind].durationS, pickup: id });
+  }
+});

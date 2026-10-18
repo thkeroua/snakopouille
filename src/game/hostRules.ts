@@ -1,11 +1,12 @@
 // Tout ce que l'HÔTE possède au plan 3 : nourriture, points, têtes à tête, chrono,
-// fever, scores, réapparitions.
+// fever, scores, réapparitions, bonus.
 import type { GameplayConfig } from '../config/gameplay';
+import { clearBonus, PickupStore, tickBonus, type Pickup } from './bonus';
 import { newBoostAcc, stepBoost, type BoostAccumulator } from './boost';
 import { buildBodyGrid, headClashes, headHitsBody, resolveClash, type BodyRef } from './collision';
 import { FoodStore } from './food';
 import type { Rng } from './rng';
-import { headRadius, type SnakeState } from './snakeMotion';
+import { eatRadius, headRadius, type SnakeState } from './snakeMotion';
 import { findSpawnPoint } from './spawn';
 import { SpatialGrid } from './spatialGrid';
 import type { DeathCause, MatchEvent, Player, SnakeId, SnakeInput } from './types';
@@ -19,6 +20,9 @@ export type HostState = {
   stats: Map<SnakeId, PlayerStats>;
   boostAcc: Map<SnakeId, BoostAccumulator>;
   spawnTimer: number;
+  superTimer: number; // secondes avant le prochain super point
+  pickups: PickupStore;
+  pickupTimer: number; // secondes avant le prochain bonus
 };
 
 type Death = { victim: SnakeId; killer: SnakeId | null; cause: DeathCause };
@@ -32,7 +36,20 @@ export function createHost(players: readonly Player[], cfg: GameplayConfig, rng:
     stats.set(p.id, { score: 0, deaths: 0, maxPoints: cfg.snake.startPoints });
     boostAcc.set(p.id, newBoostAcc());
   }
-  return { time: 0, ended: false, fever: false, food: new FoodStore(cfg, rng, palette), stats, boostAcc, spawnTimer: 0 };
+  const superTimer = rng.range(cfg.food.super.intervalMinS, cfg.food.super.intervalMaxS);
+  const pickupTimer = rng.range(cfg.bonus.intervalMinS, cfg.bonus.intervalMaxS);
+  return {
+    time: 0,
+    ended: false,
+    fever: false,
+    food: new FoodStore(cfg, rng, palette),
+    stats,
+    boostAcc,
+    spawnTimer: 0,
+    superTimer,
+    pickups: new PickupStore(),
+    pickupTimer,
+  };
 }
 
 /** Plus de points parmi les vivants ; égalité en tête → aucun. */
@@ -84,6 +101,7 @@ export class HostRules {
       s.path.reset(pos);
       s.prevX = pos.x;
       s.prevY = pos.y;
+      clearBonus(s);
       this.state.boostAcc.set(s.id, newBoostAcc());
       events.push({ type: 'respawn', snake: s.id });
     }
@@ -119,7 +137,10 @@ export class HostRules {
       for (const d of resolveClash(c)) if (!found.has(d.victim)) found.set(d.victim, d);
     }
     for (const r of reported) {
-      if (!byId.get(r.victim)?.alive || found.has(r.victim)) continue;
+      const victim = byId.get(r.victim);
+      if (!victim?.alive || found.has(r.victim)) continue;
+      // Annoncée juste avant (ou pendant) un mode fantôme de l'un des deux : on l'ignore.
+      if (victim.bonus.ghost > 0 || (byId.get(r.killer)?.bonus.ghost ?? 0) > 0) continue;
       found.set(r.victim, { victim: r.victim, killer: r.killer, cause: 'body' });
     }
     if (detectBody) {
@@ -137,6 +158,7 @@ export class HostRules {
       this.state.food.dropTrail(s.path, s.points);
       s.alive = false;
       s.boosting = false;
+      clearBonus(s);
       s.respawnAt = this.state.time + this.cfg.match.respawnDelayS;
       st.deaths++;
       if (d.killer !== null) {
@@ -147,12 +169,12 @@ export class HostRules {
     }
   }
 
-  /** Nourriture sous les têtes ; à égalité, le premier serpent de la liste l'emporte. */
+  /** Nourriture à portée des bouches (tête + aimant) ; à égalité, le premier serpent de la liste l'emporte. */
   eat(snakes: readonly SnakeState[], events: MatchEvent[]): void {
     const food = this.state.food;
     for (const s of snakes) {
       if (!s.alive) continue;
-      for (const id of food.touching(s.path.x(0), s.path.y(0), headRadius(s, this.cfg))) {
+      for (const id of food.touching(s.path.x(0), s.path.y(0), eatRadius(s, this.cfg))) {
         const f = food.items.get(id)!;
         food.remove(id);
         s.points += f.value;
@@ -181,6 +203,39 @@ export class HostRules {
     while (st.spawnTimer >= this.cfg.food.spawnIntervalS) {
       st.spawnTimer -= this.cfg.food.spawnIntervalS;
       st.food.spawnNatural(mult);
+    }
+    st.superTimer -= dt;
+    if (st.superTimer <= 0) {
+      st.food.spawnSuper(st.fever);
+      st.superTimer += this.rng.range(this.cfg.food.super.intervalMinS, this.cfg.food.super.intervalMaxS);
+    }
+  }
+
+  /** Décompte des bonus actifs. */
+  tickBonuses(snakes: readonly SnakeState[], dt: number): void {
+    for (const s of snakes) if (s.alive) tickBonus(s, dt);
+  }
+
+  /** Pose un bonus de temps en temps ; renvoie celui posé ce pas-ci. */
+  spawnPickup(dt: number): Pickup | null {
+    const st = this.state;
+    st.pickupTimer -= dt;
+    if (st.pickupTimer > 0) return null;
+    st.pickupTimer += this.rng.range(this.cfg.bonus.intervalMinS, this.cfg.bonus.intervalMaxS);
+    return st.pickups.spawn(this.rng, this.cfg);
+  }
+
+  /** Bonus sous les têtes : le minuteur repart à la durée pleine (un même bonus repris est prolongé). */
+  takePickups(snakes: readonly SnakeState[], events: MatchEvent[]): void {
+    const pickups = this.state.pickups;
+    if (pickups.items.size === 0) return;
+    for (const s of snakes) {
+      if (!s.alive) continue;
+      for (const p of pickups.touching(s.path.x(0), s.path.y(0), headRadius(s, this.cfg), this.cfg)) {
+        pickups.remove(p.id);
+        s.bonus[p.kind] = this.cfg.bonus[p.kind].durationS;
+        events.push({ type: 'bonus', snake: s.id, kind: p.kind, pickupId: p.id });
+      }
     }
   }
 

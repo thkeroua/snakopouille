@@ -131,3 +131,28 @@ test('changes are not recorded when tracking is off', () => {
   f.add(1, 1, 5, false);
   expect(f.drainChanges()).toEqual({ add: [], del: [] });
 });
+
+test('spawnSuper draws from the super table, flags the food and respects maxOnMap', () => {
+  const f = store(withConfig(GAMEPLAY, { food: { ...GAMEPLAY.food, super: { ...GAMEPLAY.food.super, maxOnMap: 2 } } }));
+  const a = f.spawnSuper(false)!;
+  expect(a.isSuper).toBe(true);
+  expect(a.natural).toBe(false);
+  expect([100, 200]).toContain(a.value);
+  expect(f.spawnSuper(false)).not.toBeNull();
+  expect(f.spawnSuper(false)).toBeNull();
+  f.remove(a.id);
+  expect(f.spawnSuper(false)).not.toBeNull();
+});
+
+test('fever super food uses its own table (500 possible, not multiplied)', () => {
+  const f = store(withConfig(GAMEPLAY, { food: { ...GAMEPLAY.food, super: { ...GAMEPLAY.food.super, maxOnMap: 1000 } } }));
+  const seen = new Set<number>();
+  for (let i = 0; i < 300; i++) seen.add(f.spawnSuper(true)!.value);
+  expect([...seen].sort((x, y) => x - y)).toEqual([100, 200, 500]);
+});
+
+test('insert keeps the super flag', () => {
+  const f = store();
+  expect(f.insert(7, 10, 10, 200, true).isSuper).toBe(true);
+  expect(f.insert(8, 10, 10, 5).isSuper).toBe(false);
+});

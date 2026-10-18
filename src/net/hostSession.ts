@@ -17,6 +17,7 @@ import {
   type ColorIndex,
   type FoodWire,
   type HeadWire,
+  type PickupWire,
   type LobbyPlayer,
   type Msg,
   type RejectReason,
@@ -55,7 +56,7 @@ type World = {
   sendAcc: number;
 };
 
-const toFoodWire = (f: Food): FoodWire => [f.id, f.x, f.y, f.value];
+const toFoodWire = (f: Food): FoodWire => [f.id, f.x, f.y, f.value, f.isSuper ? 1 : 0];
 
 export class HostSession {
   code = '';
@@ -159,6 +160,7 @@ export class HostSession {
     rules.clock(dt, events);
     rules.respawns(w.snakes, events);
     for (const e of events) if (e.type === 'respawn') this.onRespawn(w, e.snake);
+    rules.tickBonuses(w.snakes, dt);
 
     for (const s of w.snakes) {
       const queue = w.pendingMe.get(s.id)!;
@@ -191,6 +193,15 @@ export class HostSession {
       this.flushFood();
       this.broadcastStats();
     }
+
+    const taken: MatchEvent[] = [];
+    rules.takePickups(w.snakes, taken);
+    for (const e of taken) {
+      if (e.type !== 'bonus') continue;
+      this.broadcast({ t: 'bonus', snake: e.snake, kind: e.kind, left: this.cfg.bonus[e.kind].durationS, pickup: e.pickupId });
+    }
+    const p = rules.spawnPickup(dt);
+    if (p) this.broadcast({ t: 'pickup', p: [p.id, p.x, p.y, p.kind] satisfies PickupWire });
 
     rules.spawnFood(dt);
     this.flushFood();

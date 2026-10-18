@@ -1,12 +1,12 @@
 import type { GameplayConfig } from '../config/gameplay';
 import { RENDER } from '../config/render';
 import { leaderId } from '../game/hostRules';
-import { widthFor } from '../game/sizing';
-import type { SnakeState } from '../game/snakeMotion';
+import { forEachSpike } from '../game/bonus';
+import { snakeWidth, type SnakeState } from '../game/snakeMotion';
 import type { SnakeId } from '../game/types';
 import type { GameView } from '../game/view';
 import { fitViewport, type Viewport } from '../view/viewport';
-import { foodSprite, renderBackground } from './sprites';
+import { bonusSprite, foodSprite, renderBackground } from './sprites';
 
 export class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
@@ -47,11 +47,19 @@ export class Renderer {
     ctx.setTransform(k, 0, 0, k, offsetX * this.dpr, offsetY * this.dpr);
 
     const hidden = view.hiddenFood;
+    const pulse = 0.5 + 0.5 * Math.sin((performance.now() / 1000) * RENDER.superPulseHz * 2 * Math.PI);
     for (const f of view.food.values()) {
       if (hidden.size > 0 && hidden.has(f.id)) continue;
-      const sprite = foodSprite(f.color, f.r * k);
+      const sprite = foodSprite(f.isSuper ? RENDER.superFoodColor : f.color, f.r * k);
       const half = sprite.width / 2 / k;
       ctx.drawImage(sprite, f.x - half, f.y - half, half * 2, half * 2);
+      if (f.isSuper) this.drawSuperRing(f.x, f.y, f.r, pulse, k);
+    }
+    const pr = view.cfg.bonus.pickupRadius * (1 + 0.08 * pulse);
+    for (const p of view.pickups.values()) {
+      const sprite = bonusSprite(RENDER.bonusIcons[p.kind], RENDER.bonusColors[p.kind], view.cfg.bonus.pickupRadius * k);
+      const half = (pr * sprite.width) / (sprite.width - 4);
+      ctx.drawImage(sprite, p.x - half, p.y - half, half * 2, half * 2);
     }
 
     const order = view.snakes
@@ -65,24 +73,53 @@ export class Renderer {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     for (const s of order) {
-      const w = widthFor(s.points, cfg);
+      const w = snakeWidth(s, cfg);
+      const ghost = s.bonus.ghost > 0;
+      if (ghost) ctx.globalAlpha = RENDER.ghostAlpha;
+      if (s.bonus.spikes > 0) this.drawSpikes(s, cfg);
       this.tracePath(ctx, s);
       ctx.strokeStyle = s.color;
       if (RENDER.glowMode === 'stroke') {
-        ctx.globalAlpha = RENDER.glowAlpha;
+        ctx.globalAlpha = RENDER.glowAlpha * (ghost ? RENDER.ghostAlpha : 1);
         ctx.lineWidth = w * RENDER.glowWidthFactor;
         ctx.stroke();
-        ctx.globalAlpha = 1;
+        ctx.globalAlpha = ghost ? RENDER.ghostAlpha : 1;
       }
       ctx.lineWidth = w;
       ctx.stroke();
       this.drawHead(s, w / 2);
+      ctx.globalAlpha = 1;
     }
 
-    if (own) this.drawOwnMarker(own, widthFor(own.points, cfg) / 2);
+    if (own) this.drawOwnMarker(own, snakeWidth(own, cfg) / 2);
     const leader = leaderId(view.snakes);
     const crowned = leader && view.snakes.find((s) => s.id === leader);
-    if (crowned) this.drawCrown(crowned, widthFor(crowned.points, cfg) / 2);
+    if (crowned) this.drawCrown(crowned, snakeWidth(crowned, cfg) / 2);
+  }
+
+  /** Pics du mode spike : tous les triangles d'un serpent en un seul remplissage. */
+  private drawSpikes(s: SnakeState, cfg: GameplayConfig) {
+    const c = this.ctx;
+    c.beginPath();
+    forEachSpike(s, cfg, (ax, ay, tx, ty, ux, uy, base) => {
+      c.moveTo(ax - ux * base, ay - uy * base);
+      c.lineTo(tx, ty);
+      c.lineTo(ax + ux * base, ay + uy * base);
+      c.closePath();
+    });
+    c.fillStyle = s.color;
+    c.fill();
+  }
+
+  private drawSuperRing(x: number, y: number, r: number, pulse: number, k: number) {
+    const c = this.ctx;
+    c.beginPath();
+    c.arc(x, y, r * (1.4 + 0.5 * pulse), 0, Math.PI * 2);
+    c.strokeStyle = RENDER.superRingColor;
+    c.globalAlpha = 1 - 0.6 * pulse;
+    c.lineWidth = 2 / k + r * 0.15;
+    c.stroke();
+    c.globalAlpha = 1;
   }
 
   private tracePath(c: CanvasRenderingContext2D, s: SnakeState) {
@@ -106,7 +143,7 @@ export class Renderer {
     for (const s of order) {
       this.tracePath(g, s);
       g.strokeStyle = s.color;
-      g.lineWidth = widthFor(s.points, cfg) * RENDER.glowWidthFactor;
+      g.lineWidth = snakeWidth(s, cfg) * RENDER.glowWidthFactor;
       g.stroke();
     }
     const ctx = this.ctx;
