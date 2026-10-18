@@ -1,6 +1,7 @@
 // Routeur : accueil → entraînement solo, ou partie réseau (héberger / rejoindre → salon → partie).
 import { GAMEPLAY, withConfig } from './config/gameplay';
 import { RENDER } from './config/render';
+import { enableFullscreenOnTap } from './app/fullscreen';
 import { GameShell } from './app/shell';
 import { runOnline } from './app/online';
 import { startSolo } from './app/solo';
@@ -21,13 +22,7 @@ const lobbyRoot = document.getElementById('lobby')!;
 bindPortraitOverlay(document.getElementById('portrait')!);
 const shell = new GameShell();
 
-window.addEventListener(
-  'pointerdown',
-  () => {
-    document.documentElement.requestFullscreen?.().catch(() => undefined);
-  },
-  { once: true },
-);
+enableFullscreenOnTap();
 
 const durationParam = Number(params.get('duration'));
 const onlineCfg =
